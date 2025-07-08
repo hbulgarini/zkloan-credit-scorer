@@ -1,0 +1,382 @@
+{
+  "circuits": [
+    {
+      "name": "addStructNestedFieldItem",
+      "pure": false,
+      "arguments": [
+        {
+          "name": "key1",
+          "type": {
+            "type-name": "Field"
+          }
+        },
+        {
+          "name": "key2",
+          "type": {
+            "type-name": "Field"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "type-name": "Struct",
+            "name": "StructExample",
+            "elements": [
+              {
+                "name": "field1",
+                "type": {
+                  "type-name": "Field"
+                }
+              },
+              {
+                "name": "field2",
+                "type": {
+                  "type-name": "Field"
+                }
+              },
+              {
+                "name": "field3",
+                "type": {
+                  "type-name": "Field"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "addFieldItem",
+      "pure": false,
+      "arguments": [
+        {
+          "name": "key",
+          "type": {
+            "type-name": "Field"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "type-name": "Field"
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "addNestedFieldItem",
+      "pure": false,
+      "arguments": [
+        {
+          "name": "key1",
+          "type": {
+            "type-name": "Field"
+          }
+        },
+        {
+          "name": "key2",
+          "type": {
+            "type-name": "Field"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "type-name": "Field"
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "addStructItem",
+      "pure": false,
+      "arguments": [
+        {
+          "name": "key",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "type-name": "Struct",
+            "name": "UserData",
+            "elements": [
+              {
+                "name": "name",
+                "type": {
+                  "type-name": "Opaque",
+                  "tsType": "string"
+                }
+              },
+              {
+                "name": "email",
+                "type": {
+                  "type-name": "Opaque",
+                  "tsType": "string"
+                }
+              },
+              {
+                "name": "birthDate",
+                "type": {
+                  "type-name": "Opaque",
+                  "tsType": "string"
+                }
+              },
+              {
+                "name": "userId",
+                "type": {
+                  "type-name": "Field"
+                }
+              },
+              {
+                "name": "isValid",
+                "type": {
+                  "type-name": "Boolean"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "addStringItem",
+      "pure": false,
+      "arguments": [
+        {
+          "name": "key",
+          "type": {
+            "type-name": "Field"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "type-name": "Opaque",
+            "tsType": "string"
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "addEncryptedItem",
+      "pure": true,
+      "arguments": [
+        {
+          "name": "key",
+          "type": {
+            "type-name": "Field"
+          }
+        },
+        {
+          "name": "userData",
+          "type": {
+            "type-name": "Struct",
+            "name": "UserData",
+            "elements": [
+              {
+                "name": "name",
+                "type": {
+                  "type-name": "Opaque",
+                  "tsType": "string"
+                }
+              },
+              {
+                "name": "email",
+                "type": {
+                  "type-name": "Opaque",
+                  "tsType": "string"
+                }
+              },
+              {
+                "name": "birthDate",
+                "type": {
+                  "type-name": "Opaque",
+                  "tsType": "string"
+                }
+              },
+              {
+                "name": "userId",
+                "type": {
+                  "type-name": "Field"
+                }
+              },
+              {
+                "name": "isValid",
+                "type": {
+                  "type-name": "Boolean"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "userHash",
+      "pure": true,
+      "arguments": [
+        {
+          "name": "user",
+          "type": {
+            "type-name": "Struct",
+            "name": "UserData",
+            "elements": [
+              {
+                "name": "name",
+                "type": {
+                  "type-name": "Opaque",
+                  "tsType": "string"
+                }
+              },
+              {
+                "name": "email",
+                "type": {
+                  "type-name": "Opaque",
+                  "tsType": "string"
+                }
+              },
+              {
+                "name": "birthDate",
+                "type": {
+                  "type-name": "Opaque",
+                  "tsType": "string"
+                }
+              },
+              {
+                "name": "userId",
+                "type": {
+                  "type-name": "Field"
+                }
+              },
+              {
+                "name": "isValid",
+                "type": {
+                  "type-name": "Boolean"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "addEncryptedExample",
+      "pure": false,
+      "arguments": [
+        {
+          "name": "key",
+          "type": {
+            "type-name": "Field"
+          }
+        },
+        {
+          "name": "example",
+          "type": {
+            "type-name": "Struct",
+            "name": "StructExample",
+            "elements": [
+              {
+                "name": "field1",
+                "type": {
+                  "type-name": "Field"
+                }
+              },
+              {
+                "name": "field2",
+                "type": {
+                  "type-name": "Field"
+                }
+              },
+              {
+                "name": "field3",
+                "type": {
+                  "type-name": "Field"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "exampleHash",
+      "pure": true,
+      "arguments": [
+        {
+          "name": "example",
+          "type": {
+            "type-name": "Struct",
+            "name": "StructExample",
+            "elements": [
+              {
+                "name": "field1",
+                "type": {
+                  "type-name": "Field"
+                }
+              },
+              {
+                "name": "field2",
+                "type": {
+                  "type-name": "Field"
+                }
+              },
+              {
+                "name": "field3",
+                "type": {
+                  "type-name": "Field"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    }
+  ]
+}
