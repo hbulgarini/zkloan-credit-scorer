@@ -1,4 +1,4 @@
-# CompactSamples DApp
+# ZKLoanCreditScorer DApp
 
 [![Generic badge](https://img.shields.io/badge/Compact%20Compiler-0.23.0-1abc9c.svg)](https://shields.io/)  
 [![Generic badge](https://img.shields.io/badge/TypeScript-5.8.3-blue.svg)](https://shields.io/)
@@ -46,7 +46,7 @@ The [contract](contract) subdirectory contains:
 The contract contains a declaration of state stored publicly on the blockchain:
 
 ```compact
-export ledger round: CompactSamples;
+export ledger round: ZKLoanCreditScorer;
 ```
 
 and a single transition function to change the state:

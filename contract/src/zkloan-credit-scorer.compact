@@ -1,0 +1,78 @@
+// This file is part of midnightntwrk/example-counter.
+// Copyright (C) 2025 Midnight Foundation
+// SPDX-License-Identifier: Apache-2.0
+// Licensed under the Apache License, Version 2.0 (the "License");
+// You may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+pragma language_version 0.16;
+
+import CompactStandardLibrary;
+
+enum LoanStatus {
+    Evaluating,
+    Approved,
+    Rejected,
+}
+
+export struct LoanApplication {
+    requester: ZswapCoinPublicKey;
+    authorizedAmount: Uint<16>;
+    status: LoanStatus;
+}
+
+struct Applicant {
+    creditScore: Uint<16>;
+    monthlyIncome: Uint<16>;
+    monthsAsCustomer: Uint<16>;
+}
+
+export ledger blacklist: Set<ZswapCoinPublicKey>;
+export ledger loans: Map<ZswapCoinPublicKey, Map<Uint<16>, LoanApplication>>;
+
+witness getRequesterScoringWitness(): Applicant;
+
+export circuit requestLoan(requester:ZswapCoinPublicKey, amountRequested:Uint<16>):[] {
+    assert (blacklist.member(disclose(requester)), "Requester is blacklisted");
+    const profile = getRequesterScoringWitness();
+    const key = ownPublicKey();
+     // Tier 1: Best applicants
+    if (profile.creditScore >= 700 && profile.monthlyIncome >= 2000 && profile.monthsAsCustomer >= 24) {
+       const topTierAmount = 5000;
+       createLoan(requester, amountRequested, topTierAmount, LoanStatus.Approved);
+    }
+    // Tier 2: Good applicants
+    if (profile.creditScore >= 640 && profile.monthlyIncome >= 1500) {
+        //return 2500; // Loan amount of 2500
+    }
+    // Tier 3: Basic eligibility
+     if (profile.creditScore >= 580) {
+        //return 500;  // Loan amount of 500
+    }
+    // Not eligible
+
+        //return 0;    // Loan amount of 0
+     
+}
+
+circuit createLoan(requester: ZswapCoinPublicKey, amountRequested: Uint<16>, topTierAmount: Uint<16>, status: LoanStatus): [] {
+    const authorizedAmount = amountRequested > topTierAmount ? topTierAmount : amountRequested;
+    const loan = LoanApplication {
+        requester: requester,
+        authorizedAmount: authorizedAmount, 
+        status: status,
+    };
+    loans.insert(disclose(requester), Map<Uint<16>, LoanApplication> { (authorizedAmount, loan) });
+    if(!loans.member(requester)) {
+        loans.insert(requester, default<Map<Uint<16>, LoanApplication>>);
+    }
+    simpleNestedMap.lookup(key1).insert(key2, value);
+}

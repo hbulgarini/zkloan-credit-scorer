@@ -1,10 +1,10 @@
 {
-  "name": "compact-samples",
+  "name": "zkloan-credit-scorer",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "workspaces": [
-    "compact-samples-cli",
+    "zkloan-credit-scorer-cli",
     "contract"
   ],
   "devDependencies": {

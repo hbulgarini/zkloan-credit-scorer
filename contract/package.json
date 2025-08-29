@@ -1,5 +1,5 @@
 {
-  "name": "compact-samples-contract",
+  "name": "zkloan-credit-scorer-contract",
   "version": "0.1.0",
   "author": "IOG",
   "private": true,
@@ -16,10 +16,10 @@
     }
   },
   "scripts": {
-    "compact": "compactc src/compact-samples.compact src/managed/compact-samples",
+    "compact": "compactc src/zkloan-credit-scorer.compact src/managed/zkloan-credit-scorer",
     "test": "vitest run",
     "test:compile": "npm run compact && vitest run",
-    "build": "rm -rf dist && tsc --project tsconfig.build.json && cp -Rf ./src/managed ./dist/managed && cp ./src/compact-samples.compact ./dist",
+    "build": "rm -rf dist && tsc --project tsconfig.build.json && cp -Rf ./src/managed ./dist/managed && cp ./src/zkloan-credit-scorer.compact ./dist",
     "lint": "eslint src",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }

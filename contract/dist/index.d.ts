@@ -1,2 +1,2 @@
-export * as CompactSamples from "./managed/compact-samples/contract/index.cjs";
+export * as ZKLoanCreditScorer from "./managed/zkloan-credit-scorer/contract/index.cjs";
 export * from "./witnesses";

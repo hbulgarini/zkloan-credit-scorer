@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { CompactSamplesSimulator } from "./compact-samples.simulator.js";
+import { ZKLoanCreditScorerSimulator } from "./zkloan-credit-scorer.simulator.js";
 import {
   NetworkId,
   setNetworkId
@@ -22,18 +22,58 @@ import { describe, it, expect } from "vitest";
 
 setNetworkId(NetworkId.Undeployed);
 
-describe("CompactSamples smart contract", () => {
-  it("generates initial ledger state deterministically", () => {
-    const simulator0 = new CompactSamplesSimulator();
-    const simulator1 = new CompactSamplesSimulator();
+describe("ZKLoanCreditScorer smart contract", () => {
+/*   it("generates initial ledger state deterministically", () => {
+    const simulator0 = new ZKLoanCreditScorerSimulator();
+    const simulator1 = new ZKLoanCreditScorerSimulator();
     expect(simulator0.getLedger()).toEqual(simulator1.getLedger());
+  }); */
+
+   it("properly adds a new item in the simpleMap", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const newLedgerState = simulator.addFieldItem(0n, 1n);
+    const initialLedgerState = simulator.getLedger();
+  //  console.log("Next Ledger State:", newLedgerState);
+    const item = newLedgerState.simpleMap.lookup(0n);
+    expect(item).toEqual(1n);
+    expect(initialLedgerState.simpleMap.size()).toEqual(1n);
+    //const initialPrivateState = simulator.getPrivateState();
+   // expect(initialPrivateState).toEqual({ privateZKLoanCreditScorer: 0 });
   });
 
+  /*
+  it("properly adds a new item in the simpleMap", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const newLedgerState = simulator.addAccountFieldItem(1n);
+    console.log("Next Ledger State:", newLedgerState);
+    const item = newLedgerState.simpleMap.lookup(0n);
+    expect(item).toEqual(1n);
+   // expect(initialLedgerState.simpleMap.size()).toEqual(1n);
+    //const initialPrivateState = simulator.getPrivateState();
+   // expect(initialPrivateState).toEqual({ privateZKLoanCreditScorer: 0 });
+  });
+  */
+
+  it("properly insert value in nested maps", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const prevState = simulator.getLedger();
+    const shouldNotExist = prevState.simpleNestedMap.member(1n);
+    expect(shouldNotExist).toBeFalsy();
+    let newLedgerState = simulator.insertNestedFieldItem(1n,1n, 1n);
+    const item = newLedgerState.simpleNestedMap.lookup(1n).lookup(1n);
+    expect(item).toEqual(1n);
+    newLedgerState = simulator.insertNestedFieldItem(1n,1n, 2n);
+    const item2 = newLedgerState.simpleNestedMap.lookup(1n).lookup(1n);
+    expect(item2).toEqual(2n);
+  });
+  
+
   it("properly initializes ledger state and private state", () => {
-    const simulator = new CompactSamplesSimulator();
+    const simulator = new ZKLoanCreditScorerSimulator();
     const initialLedgerState = simulator.getLedger();
-    expect(initialLedgerState.simpleMap).toEqual(0n);
+    //console.log("Initial Ledger State:", initialLedgerState);
+    expect(initialLedgerState.simpleMap.size()).toEqual(0n);
     const initialPrivateState = simulator.getPrivateState();
-    expect(initialPrivateState).toEqual({ privateCompactSamples: 0 });
+    expect(initialPrivateState).toEqual({ privateZKLoanCreditScorer: 0 });
   });
 });

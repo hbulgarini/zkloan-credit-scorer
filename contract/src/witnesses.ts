@@ -13,9 +13,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// This is how we type an empty object.
-export type CompactSamplesPrivateState = {
-  privateCompactSamples: number;
+import { Ledger } from "./managed/zkloan-credit-scorer/contract/index.cjs";
+import { WitnessContext } from "@midnight-ntwrk/compact-runtime";
+
+// This array exists only in the off-chain Witness environment
+
+/* 
+export const createMidsignPrivateState = (secretKey: Uint8Array) => ({
+  secretKey, 
+});
+ */
+export type ZKLoanCreditScorerPrivateState = {
+  creditScore: number;
+  monthlyIncome: number;
+  monthsAsCustomer: number;
 };
 
-export const witnesses = {};
+export const witnesses = {
+  getRequesterScoringWitness: ({
+    privateState
+  }: WitnessContext<Ledger, ZKLoanCreditScorerPrivateState>): ZKLoanCreditScorerPrivateState => privateState,
+};
