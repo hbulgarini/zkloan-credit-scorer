@@ -35,42 +35,48 @@ constructor() {
 }
 
 export ledger blacklist: Set<ZswapCoinPublicKey>;
-export ledger loans: Map<ZswapCoinPublicKey, Map<Uint<16>, LoanApplication>>;
+export ledger loans: Map<Bytes<32>, Map<Uint<16>, LoanApplication>>;
 export ledger admin: ZswapCoinPublicKey;
 export ledger usersCount: Counter;
 
 witness getRequesterScoringWitness(): Applicant;
 
-export circuit requestLoan(requester:ZswapCoinPublicKey, amountRequested:Uint<16>):[] {
-    assert (blacklist.member(disclose(requester)), "Requester is blacklisted");
-    const profile = getRequesterScoringWitness();
-     // Tier 1: Best applicants
-    if (profile.creditScore >= 700 && profile.monthlyIncome >= 2000 && profile.monthsAsCustomer >= 24) {
-        const topTierAmount = 10000;
-        createLoan(requester, amountRequested, topTierAmount, LoanStatus.Approved);
-    }
-/*      // Tier 2: Good applicants
-    if (profile.creditScore >= 600 && profile.monthlyIncome >= 1500) {
-        const topTierAmount = 7000;
-        createLoan(requester, amountRequested, topTierAmount, LoanStatus.Approved);
-    }
-    // Tier 3: Basic eligibility
-    if (profile.creditScore >= 580) {
-        const topTierAmount = 3000;
-        createLoan(requester, amountRequested, topTierAmount, LoanStatus.Approved);
-    }
-
-    if (profile.creditScore <= 580) {
-        createLoan(requester, amountRequested, 0, LoanStatus.Rejected);
-    } */
+export circuit requestLoan(amountRequested:Uint<16>, secretPin: Uint<16>):[] {
+    const zwapPublicKey = ownPublicKey();
+    const requesterPubKey = publicKey(zwapPublicKey.bytes, secretPin);
+    assert (blacklist.member(zwapPublicKey), "Requester is blacklisted");
+    const [topTierAmount, status] = evaluateApplicant();
+    const disclosedTopTierAmount = disclose(topTierAmount);
+    const disclosedStatus = disclose(status);
+    createLoan(disclose(requesterPubKey), amountRequested, disclosedTopTierAmount, disclosedStatus);
+    
     return [];
 }
 
-circuit createLoan(requester: ZswapCoinPublicKey, amountRequested: Uint<16>, topTierAmount: Uint<16>, status: LoanStatus): [] {
-    const authorizedAmount = amountRequested > topTierAmount ? topTierAmount : disclose(amountRequested);
-    const disclosedRequester = disclose(requester);
-    const totalLoans = loans.lookup(disclosedRequester).size();
-  /*   const loan = LoanApplication {
+circuit evaluateApplicant(): [Uint<16>, LoanStatus] {
+     const profile = getRequesterScoringWitness();
+    // Tier 1: Best applicants
+    if (profile.creditScore >= 700 && profile.monthlyIncome >= 2000 && profile.monthsAsCustomer >= 24) {
+        return [10000, LoanStatus.Approved];
+    }
+    // Tier 2: Good applicants
+    else if (profile.creditScore >= 600 && profile.monthlyIncome >= 1500) {
+        return [7000, LoanStatus.Approved];
+     }
+    // Tier 3: Basic eligibility
+    else if (profile.creditScore >= 580) {
+        return [3000, LoanStatus.Approved];
+    }
+    // If none of the above conditions were met, the applicant is rejected.
+    else {
+        return [0, LoanStatus.Rejected];
+    }
+}
+
+circuit createLoan(requester: Bytes<32>, amountRequested: Uint<16>, topTierAmount: Uint<16>, status: LoanStatus): [] {
+    const authorizedAmount = amountRequested > topTierAmount ? topTierAmount : amountRequested;
+    const totalLoans = loans.lookup(requester).size();
+    const loan = LoanApplication {
         authorizedAmount: authorizedAmount,
         status: status,
     };
@@ -78,7 +84,7 @@ circuit createLoan(requester: ZswapCoinPublicKey, amountRequested: Uint<16>, top
         loans.insert(requester, default<Map<Uint<16>, LoanApplication>>);
     }
     const loanNumber = totalLoans + 1;
-    loans.lookup(requester).insert(loanNumber as Uint<16>, loan);  */
+    loans.lookup(requester).insert(loanNumber as Uint<16>, disclose(loan));  
     return [];
 }
 
@@ -94,4 +100,8 @@ export circuit removeBlacklistUser(account: ZswapCoinPublicKey): [] {
     return [];
 }
 
-
+export circuit publicKey(sk: Bytes<32>, pin: Uint<16>): Bytes<32> {
+    const pinBytes = persistentHash<Uint<16>>(pin);
+    return persistentHash<Vector<3, Bytes<32>>>(
+           [pad(32, "zk-credit-scorer:pk"), pinBytes, sk]);
+}
