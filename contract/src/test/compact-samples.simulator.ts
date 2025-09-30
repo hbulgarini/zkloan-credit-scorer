@@ -26,6 +26,7 @@ import {
 } from "../managed/zkloan-credit-scorer/contract/index.cjs";
 import { type ZKLoanCreditScorerPrivateState, witnesses } from "../witnesses.js";
 import {createEitherTestUser} from "./utils/address.js";
+import {getRandomUserProfile} from "../../../zkloan-credit-scorer-cli/src/state.utils.js";
 
 // This is over-kill for such a simple contract, but the same pattern can be used to test more
 // complex contracts.
@@ -40,7 +41,7 @@ export class ZKLoanCreditScorerSimulator {
       currentContractState,
       currentZswapLocalState
     } = this.contract.initialState(
-      constructorContext({ privateZKLoanCreditScorer: 0 }, "0".repeat(64))
+      constructorContext(getRandomUserProfile())
     );
     this.circuitContext = {
       currentPrivateState,
@@ -71,27 +72,6 @@ export class ZKLoanCreditScorerSimulator {
     return ledger(this.circuitContext.transactionContext.state);
   }
 
-  public addAccountFieldItem(value: bigint): Ledger {
-    // Update the current context to be the result of executing the circuit.
-    this.circuitContext = this.contract.impureCircuits.addAccountFieldItem(
-      this.circuitContext,
-      value
-    ).context;
-    return ledger(this.circuitContext.transactionContext.state);
-  }
-
-  public insertNestedFieldItem(key1: bigint, key2: bigint, value: bigint): Ledger {
-    // Update the current context to be the result of executing the circuit.
-    this.circuitContext = this.contract.impureCircuits.insertNestedFieldItem(
-      this.circuitContext,
-      key1,
-      key2,
-      value
-    ).context;
-    return ledger(this.circuitContext.transactionContext.state);
-  }
-
-  
 
   public createTestUser(str: string): any {
     return createEitherTestUser(str);

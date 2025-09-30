@@ -16,13 +16,7 @@
 import { Ledger } from "./managed/zkloan-credit-scorer/contract/index.cjs";
 import { WitnessContext } from "@midnight-ntwrk/compact-runtime";
 
-// This array exists only in the off-chain Witness environment
 
-/* 
-export const createMidsignPrivateState = (secretKey: Uint8Array) => ({
-  secretKey, 
-});
- */
 export type ZKLoanCreditScorerPrivateState = {
   creditScore: number;
   monthlyIncome: number;

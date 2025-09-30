@@ -32,12 +32,15 @@ struct Applicant {
 
 constructor() {
     admin = ownPublicKey();
+    MIGRATION_BATCH_SIZE = 5;
 }
 
 export ledger blacklist: Set<ZswapCoinPublicKey>;
 export ledger loans: Map<Bytes<32>, Map<Uint<16>, LoanApplication>>;
+export ledger onGoingPinMigration: Map<Bytes<32>, Uint<16>>;
 export ledger admin: ZswapCoinPublicKey;
 export ledger usersCount: Counter;
+export ledger MIGRATION_BATCH_SIZE: Uint<16>;
 
 witness getRequesterScoringWitness(): Applicant;
 
@@ -99,6 +102,43 @@ export circuit removeBlacklistUser(account: ZswapCoinPublicKey): [] {
     blacklist.remove(disclose(account));
     return [];
 }
+
+export circuit changePin(oldPin: Uint<16>, newPin: Uint<16>): [] {
+    const zwapPublicKey = ownPublicKey();
+    const oldPk = publicKey(zwapPublicKey.bytes, oldPin);
+    const newPk = publicKey(zwapPublicKey.bytes, newPin);
+    assert(loans.member(disclose(oldPk)), "Old PIN does not match any user");
+    const topNro = MIGRATION_BATCH_SIZE as Uint<16>;
+    const lastMigratedLoan: Uint<16> = onGoingPinMigration.lookup(disclose(oldPk));
+    const loansIds: Vector<5, Uint<16>> = [
+        (lastMigratedLoan + 1) as Uint<16>,
+        (lastMigratedLoan + 2) as Uint<16>,
+        (lastMigratedLoan + 3) as Uint<16>,
+        (lastMigratedLoan + 4) as Uint<16>,
+        (lastMigratedLoan + 5) as Uint<16>
+    ];
+
+    for (const currentLoan of loansIds) {
+        const nro: Uint<16> = currentLoan as Uint<16>;
+        if(loans.lookup(oldPk).member(nro)) {
+            const loan = loans.lookup(disclose(oldPk)).lookup(nro);
+            if (!loans.member(disclose(newPk))) {
+                loans.insert(disclose(newPk), default<Map<Uint<16>, LoanApplication>>);
+            }
+            loans.lookup(disclose(newPk)).insert(nro, disclose(loan));
+            loans.lookup(disclose(oldPk)).remove(nro);
+            onGoingPinMigration.insert(disclose(oldPk), nro);
+        }
+       else {
+            onGoingPinMigration.remove(disclose(oldPk));
+            loans.remove(disclose(oldPk));
+        return [];
+       } 
+    }
+
+    return [];
+}
+
 
 export circuit publicKey(sk: Bytes<32>, pin: Uint<16>): Bytes<32> {
     const pinBytes = persistentHash<Uint<16>>(pin);
