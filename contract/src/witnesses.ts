@@ -18,13 +18,23 @@ import { WitnessContext } from "@midnight-ntwrk/compact-runtime";
 
 
 export type ZKLoanCreditScorerPrivateState = {
-  creditScore: number;
-  monthlyIncome: number;
-  monthsAsCustomer: number;
+  creditScore: bigint;
+  monthlyIncome: bigint;
+  monthsAsCustomer: bigint;
 };
 
 export const witnesses = {
   getRequesterScoringWitness: ({
     privateState
-  }: WitnessContext<Ledger, ZKLoanCreditScorerPrivateState>): ZKLoanCreditScorerPrivateState => privateState,
+  }: WitnessContext<Ledger, ZKLoanCreditScorerPrivateState>): [
+    ZKLoanCreditScorerPrivateState,
+    ZKLoanCreditScorerPrivateState,
+  ] => [
+    privateState,
+    {
+      creditScore: privateState.creditScore,
+      monthlyIncome: privateState.monthlyIncome,
+      monthsAsCustomer: privateState.monthsAsCustomer,
+    },
+  ],
 };

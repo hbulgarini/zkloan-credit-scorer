@@ -1,6 +1,6 @@
 import { type ZKLoanCreditScorerPrivateState } from '../../contract';
 
-const userProfiles = [
+export const userProfiles = [
   {
     "applicantId": "user-001",
     "creditScore": 720,
@@ -63,8 +63,20 @@ const userProfiles = [
   }
 ];
 
-export function getRandomUserProfile(): ZKLoanCreditScorerPrivateState {
-  const idx = Math.floor(Math.random() * userProfiles.length);
-  return userProfiles[idx] as ZKLoanCreditScorerPrivateState;
+export function getUserProfile(index?: number): ZKLoanCreditScorerPrivateState {
+  let profile;
+  if (index !== undefined) {
+    if (index < 0 || index >= userProfiles.length) {
+      throw new Error(`Index ${index} is out of bounds. Must be between 0 and ${userProfiles.length - 1}.`);
+    }
+    profile = userProfiles[index];
+  } else {
+    const randomIndex = Math.floor(Math.random() * userProfiles.length);
+    profile = userProfiles[randomIndex];
+  }
+  return {
+    creditScore: BigInt(profile.creditScore),
+    monthlyIncome: BigInt(profile.monthlyIncome),
+    monthsAsCustomer: BigInt(profile.monthsAsCustomer),
+  };
 }
-

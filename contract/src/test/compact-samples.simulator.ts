@@ -26,7 +26,8 @@ import {
 } from "../managed/zkloan-credit-scorer/contract/index.cjs";
 import { type ZKLoanCreditScorerPrivateState, witnesses } from "../witnesses.js";
 import {createEitherTestUser} from "./utils/address.js";
-import {getRandomUserProfile} from "../../../zkloan-credit-scorer-cli/src/state.utils.js";
+import {getUserProfile} from "../../../zkloan-credit-scorer-cli/src/state.utils.js";
+
 
 // This is over-kill for such a simple contract, but the same pattern can be used to test more
 // complex contracts.
@@ -35,13 +36,14 @@ export class ZKLoanCreditScorerSimulator {
   circuitContext: CircuitContext<ZKLoanCreditScorerPrivateState>;
 
   constructor() {
+    const user = createEitherTestUser("Alice");
     this.contract = new Contract<ZKLoanCreditScorerPrivateState>(witnesses);
     const {
       currentPrivateState,
       currentContractState,
       currentZswapLocalState
     } = this.contract.initialState(
-      constructorContext(getRandomUserProfile())
+      constructorContext(getUserProfile(0), user.left)
     );
     this.circuitContext = {
       currentPrivateState,
@@ -62,12 +64,12 @@ export class ZKLoanCreditScorerSimulator {
     return this.circuitContext.currentPrivateState;
   }
 
-  public addFieldItem(key: bigint, value: bigint): Ledger {
+  public requestLoan(amountRequested: bigint, secretPin: bigint): Ledger {
     // Update the current context to be the result of executing the circuit.
-    this.circuitContext = this.contract.impureCircuits.addFieldItem(
+    this.circuitContext = this.contract.impureCircuits.requestLoan(
       this.circuitContext,
-      key,
-      value
+      amountRequested,
+      secretPin
     ).context;
     return ledger(this.circuitContext.transactionContext.state);
   }

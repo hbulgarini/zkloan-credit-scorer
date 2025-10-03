@@ -44,7 +44,7 @@ import {
   type DeployedZKLoanCreditScorerContract,
 } from './common-types';
 import { type Config, contractConfig } from './config';
-import { getRandomUserProfile } from './state.utils';
+import { getUserProfile } from './state.utils';
 import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
 import { assertIsContractAddress, toHex } from '@midnight-ntwrk/midnight-js-utils';
 import { getLedgerNetworkId, getZswapNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
@@ -80,7 +80,7 @@ export const joinContract = async (
     contractAddress,
     contract: counterContractInstance,
     privateStateId: 'counterPrivateState',
-    initialPrivateState: getRandomUserProfile(),
+    initialPrivateState: getUserProfile(),
   });
   logger.info(`Joined contract at address: ${counterContract.deployTxData.public.contractAddress}`);
   return counterContract;

@@ -56,7 +56,7 @@ export circuit requestLoan(amountRequested:Uint<16>, secretPin: Uint<16>):[] {
     return [];
 }
 
-circuit evaluateApplicant(): [Uint<16>, LoanStatus] {
+export circuit evaluateApplicant(): [Uint<16>, LoanStatus] {
      const profile = getRequesterScoringWitness();
     // Tier 1: Best applicants
     if (profile.creditScore >= 700 && profile.monthlyIncome >= 2000 && profile.monthsAsCustomer >= 24) {
