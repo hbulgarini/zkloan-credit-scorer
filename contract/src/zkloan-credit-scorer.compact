@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pragma language_version 0.17;
+pragma language_version 0.18;
 import CompactStandardLibrary;
 
 enum LoanStatus {
@@ -32,7 +32,6 @@ struct Applicant {
 
 constructor() {
     admin = ownPublicKey();
-    MIGRATION_BATCH_SIZE = 5;
 }
 
 export ledger blacklist: Set<ZswapCoinPublicKey>;
@@ -40,7 +39,6 @@ export ledger loans: Map<Bytes<32>, Map<Uint<16>, LoanApplication>>;
 export ledger onGoingPinMigration: Map<Bytes<32>, Uint<16>>;
 export ledger admin: ZswapCoinPublicKey;
 export ledger usersCount: Counter;
-export ledger MIGRATION_BATCH_SIZE: Uint<16>;
 
 witness getRequesterScoringWitness(): Applicant;
 
@@ -56,7 +54,7 @@ export circuit requestLoan(amountRequested:Uint<16>, secretPin: Uint<16>):[] {
     return [];
 }
 
-export circuit evaluateApplicant(): [Uint<16>, LoanStatus] {
+circuit evaluateApplicant(): [Uint<16>, LoanStatus] {
      const profile = getRequesterScoringWitness();
     // Tier 1: Best applicants
     if (profile.creditScore >= 700 && profile.monthlyIncome >= 2000 && profile.monthsAsCustomer >= 24) {
@@ -108,7 +106,6 @@ export circuit changePin(oldPin: Uint<16>, newPin: Uint<16>): [] {
     const oldPk = publicKey(zwapPublicKey.bytes, oldPin);
     const newPk = publicKey(zwapPublicKey.bytes, newPin);
     assert(loans.member(disclose(oldPk)), "Old PIN does not match any user");
-    const topNro = MIGRATION_BATCH_SIZE as Uint<16>;
     const lastMigratedLoan: Uint<16> = onGoingPinMigration.lookup(disclose(oldPk));
     const loansIds: Vector<5, Uint<16>> = [
         (lastMigratedLoan + 1) as Uint<16>,
@@ -135,7 +132,6 @@ export circuit changePin(oldPin: Uint<16>, newPin: Uint<16>): [] {
         return [];
        } 
     }
-
     return [];
 }
 

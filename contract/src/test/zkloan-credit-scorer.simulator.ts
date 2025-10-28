@@ -38,12 +38,13 @@ export class ZKLoanCreditScorerSimulator {
   constructor() {
     const user = createEitherTestUser("Alice");
     this.contract = new Contract<ZKLoanCreditScorerPrivateState>(witnesses);
+    const initialPrivateState: ZKLoanCreditScorerPrivateState = getUserProfile(0);
     const {
       currentPrivateState,
       currentContractState,
       currentZswapLocalState
     } = this.contract.initialState(
-      constructorContext(getUserProfile(0), user.left)
+      constructorContext(initialPrivateState, user.left)
     );
     this.circuitContext = {
       currentPrivateState,
@@ -73,6 +74,43 @@ export class ZKLoanCreditScorerSimulator {
     ).context;
     return ledger(this.circuitContext.transactionContext.state);
   }
+
+  public blacklistUser(account: Uint8Array): Ledger {
+    // Update the current context to be the result of executing the circuit.
+    this.circuitContext = this.contract.impureCircuits.blacklistUser(
+      this.circuitContext,
+      { bytes: account }
+    ).context;
+    return ledger(this.circuitContext.transactionContext.state);
+  }
+
+  public removeBlacklistUser(account: Uint8Array): Ledger {
+    // Update the current context to be the result of executing the circuit.
+    this.circuitContext = this.contract.impureCircuits.removeBlacklistUser(
+      this.circuitContext,
+      { bytes: account }
+    ).context;
+    return ledger(this.circuitContext.transactionContext.state);
+  }
+
+  public changePin(oldPin: bigint, newPin: bigint): Ledger {
+    // Update the current context to be the result of executing the circuit.
+    this.circuitContext = this.contract.impureCircuits.changePin(
+      this.circuitContext,
+      oldPin,
+      newPin
+    ).context;
+    return ledger(this.circuitContext.transactionContext.state);
+  }
+
+  public publicKey(sk: Uint8Array, pin: bigint): Uint8Array {
+    return this.contract.circuits.publicKey(
+      this.circuitContext,
+      sk,
+      pin
+    ).result;
+  }
+
 
 
   public createTestUser(str: string): any {

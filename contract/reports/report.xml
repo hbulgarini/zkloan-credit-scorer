@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuites name="vitest tests" tests="3" failures="0" errors="0" time="0.371">
-    <testsuite name="src/test/compact-samples.test.ts" timestamp="2025-07-15T16:13:31.632Z" hostname="Hectors-MacBook-Pro.local" tests="3" failures="0" errors="0" skipped="0" time="0.034">
-        <testcase classname="src/test/compact-samples.test.ts" name="CompactSamples smart contract &gt; properly adds a new item in the simpleMap" time="0.023">
-        </testcase>
-        <testcase classname="src/test/compact-samples.test.ts" name="CompactSamples smart contract &gt; properly insert value in nested maps" time="0.007">
-        </testcase>
-        <testcase classname="src/test/compact-samples.test.ts" name="CompactSamples smart contract &gt; properly initializes ledger state and private state" time="0.004">
+<testsuites name="vitest tests" tests="1" failures="1" errors="0" time="0.284">
+    <testsuite name="src/test/compact-samples.test.ts" timestamp="2025-10-28T16:44:59.529Z" hostname="Hectors-MacBook-Pro.local" tests="1" failures="1" errors="0" skipped="0" time="0">
+        <testcase classname="src/test/compact-samples.test.ts" name="src/test/compact-samples.test.ts" time="0">
+            <failure message="Version mismatch: compiled code expects 0.9.0, runtime is 0.8.1" type="CompactError">
+CompactError: Version mismatch: compiled code expects 0.9.0, runtime is 0.8.1
+ ❯ src/managed/zkloan-credit-scorer/contract/index.cjs:10:10
+ ❯ src/test/zkloan-credit-scorer.simulator.ts:2:31
+            </failure>
         </testcase>
     </testsuite>
 </testsuites>

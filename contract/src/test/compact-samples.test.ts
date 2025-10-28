@@ -23,12 +23,12 @@ import { describe, it, expect } from "vitest";
 setNetworkId(NetworkId.Undeployed);
 
 describe("ZKLoanCreditScorer smart contract", () => {
-/*   it("generates initial ledger state deterministically", () => {
+   it("generates initial ledger state deterministically", () => {
     const simulator0 = new ZKLoanCreditScorerSimulator();
     const simulator1 = new ZKLoanCreditScorerSimulator();
     expect(simulator0.getLedger()).toEqual(simulator1.getLedger());
-  }); */
-
+  });
+/* 
    it("properly adds a new item in the simpleMap", () => {
     const simulator = new ZKLoanCreditScorerSimulator();
     const newLedgerState = simulator.addFieldItem(0n, 1n);
@@ -41,18 +41,7 @@ describe("ZKLoanCreditScorer smart contract", () => {
    // expect(initialPrivateState).toEqual({ privateZKLoanCreditScorer: 0 });
   });
 
-  /*
-  it("properly adds a new item in the simpleMap", () => {
-    const simulator = new ZKLoanCreditScorerSimulator();
-    const newLedgerState = simulator.addAccountFieldItem(1n);
-    console.log("Next Ledger State:", newLedgerState);
-    const item = newLedgerState.simpleMap.lookup(0n);
-    expect(item).toEqual(1n);
-   // expect(initialLedgerState.simpleMap.size()).toEqual(1n);
-    //const initialPrivateState = simulator.getPrivateState();
-   // expect(initialPrivateState).toEqual({ privateZKLoanCreditScorer: 0 });
-  });
-  */
+
 
   it("properly insert value in nested maps", () => {
     const simulator = new ZKLoanCreditScorerSimulator();
@@ -75,5 +64,5 @@ describe("ZKLoanCreditScorer smart contract", () => {
     expect(initialLedgerState.simpleMap.size()).toEqual(0n);
     const initialPrivateState = simulator.getPrivateState();
     expect(initialPrivateState).toEqual({ privateZKLoanCreditScorer: 0 });
-  });
+  }); */
 });
