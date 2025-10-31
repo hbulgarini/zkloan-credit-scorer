@@ -44,7 +44,7 @@ export class ZKLoanCreditScorerSimulator {
       currentContractState,
       currentZswapLocalState
     } = this.contract.initialState(
-      constructorContext(initialPrivateState, user.left)
+      constructorContext(initialPrivateState, user.left.hex)
     );
     this.circuitContext = {
       currentPrivateState,
@@ -110,7 +110,6 @@ export class ZKLoanCreditScorerSimulator {
       pin
     ).result;
   }
-
 
 
   public createTestUser(str: string): any {

@@ -24,6 +24,7 @@ export const toHexPadded = (str: string, len = 64) =>
  */
 export const encodeToPK = (str: string): any  => ({ // TODO: look for ZswapCoinPublicKey type
   bytes: encodeCoinPublicKey(toHexPadded(str)),
+  hex: toHexPadded(str),
 });
 
 /* /**
