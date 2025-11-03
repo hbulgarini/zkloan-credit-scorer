@@ -16,7 +16,7 @@
 pragma language_version 0.18;
 import CompactStandardLibrary;
 
-enum LoanStatus {
+export enum LoanStatus {
     Approved,
     Rejected,
 }
@@ -45,7 +45,7 @@ witness getRequesterScoringWitness(): Applicant;
 export circuit requestLoan(amountRequested:Uint<16>, secretPin: Uint<16>):[] {
     const zwapPublicKey = ownPublicKey();
     const requesterPubKey = publicKey(zwapPublicKey.bytes, secretPin);
-    assert (blacklist.member(zwapPublicKey), "Requester is blacklisted");
+    assert (!blacklist.member(zwapPublicKey), "Requester is blacklisted");
     const [topTierAmount, status] = evaluateApplicant();
     const disclosedTopTierAmount = disclose(topTierAmount);
     const disclosedStatus = disclose(status);
@@ -76,14 +76,16 @@ circuit evaluateApplicant(): [Uint<16>, LoanStatus] {
 
 circuit createLoan(requester: Bytes<32>, amountRequested: Uint<16>, topTierAmount: Uint<16>, status: LoanStatus): [] {
     const authorizedAmount = amountRequested > topTierAmount ? topTierAmount : amountRequested;
-    const totalLoans = loans.lookup(requester).size();
+
     const loan = LoanApplication {
-        authorizedAmount: authorizedAmount,
+       authorizedAmount: authorizedAmount,
         status: status,
     };
     if(!loans.member(requester)) {
-        loans.insert(requester, default<Map<Uint<16>, LoanApplication>>);
+            loans.insert(requester, default<Map<Uint<16>, LoanApplication>>);
     }
+    // Always check the map entry exists
+    const totalLoans = loans.lookup(requester).size();
     const loanNumber = totalLoans + 1;
     loans.lookup(requester).insert(loanNumber as Uint<16>, disclose(loan));  
     return [];
