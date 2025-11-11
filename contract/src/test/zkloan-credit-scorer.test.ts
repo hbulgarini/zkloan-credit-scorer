@@ -304,16 +304,13 @@ describe("ZKLoanCreditScorer smart contract", () => {
     let ledger = simulator.getLedger();
     
     expect(ledger.onGoingPinMigration.lookup(oldPubKey)).toEqual(5n);
-    
-    expect(() => {
-      simulator.requestLoan(100n, oldPin);
-    }).toThrow("PIN migration is in progress for this user");
-
     expect(ledger.onGoingPinMigration.member(oldPubKey)).toBeTruthy(); // Migration is active
 
-
     // Try to request a new loan with the old PIN
-/*      */
+    expect(() => {
+      simulator.requestLoan(100n, oldPin);
+    }).toThrow("PIN migration is in progress for this user"); 
+
   });
 /*
   it("throws an error if migrating to a new PIN that already has loans", () => {

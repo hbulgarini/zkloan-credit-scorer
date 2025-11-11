@@ -46,7 +46,7 @@ export circuit requestLoan(amountRequested:Uint<16>, secretPin: Uint<16>):[] {
     const zwapPublicKey = ownPublicKey();
     const requesterPubKey = publicKey(zwapPublicKey.bytes, secretPin);
     assert (!blacklist.member(zwapPublicKey), "Requester is blacklisted");
-    assert (!onGoingPinMigration.member(requesterPubKey), "PIN migration is in progress for this user");
+    assert (!onGoingPinMigration.member(disclose(requesterPubKey)), "PIN migration is in progress for this user");
     const [topTierAmount, status] = evaluateApplicant();
     const disclosedTopTierAmount = disclose(topTierAmount);
     const disclosedStatus = disclose(status);
@@ -132,8 +132,8 @@ export circuit changePin(oldPin: Uint<16>, newPin: Uint<16>): [] {
             onGoingPinMigration.insert(disclose(oldPk), nro); 
         }
         else {
-            onGoingPinMigration.remove(oldPk);
-            loans.remove(oldPk); 
+            //onGoingPinMigration.remove(disclose(oldPk));
+            //loans.remove(disclose(oldPk)); 
             return []; 
        }  
     }  
