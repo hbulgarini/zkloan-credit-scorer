@@ -1,14 +1,81 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuites name="vitest tests" tests="2" failures="0" errors="0" time="0.305">
-    <testsuite name="src/test/zkloan-credit-scorer.test.ts" timestamp="2025-10-30T16:49:09.200Z" hostname="Hectors-MacBook-Pro.local" tests="2" failures="0" errors="0" skipped="0" time="0.03">
-        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; generates initial ledger state deterministically" time="0.025">
+<testsuites name="vitest tests" tests="11" failures="1" errors="0" time="0.583">
+    <testsuite name="src/test/zkloan-credit-scorer.test.ts" timestamp="2025-11-11T16:35:34.219Z" hostname="ServerLaptop" tests="11" failures="1" errors="0" skipped="0" time="0.128">
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; generates initial ledger state deterministically" time="0.022">
         </testcase>
-        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; approves a Tier 1 loan and caps at the max amount" time="0.005">
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; approves a Tier 1 loan and caps at the max amount" time="0.007">
             <system-out>
-blacklist? [33m0n[39m
-entries []
+User public key: Uint8Array(32) [
+  [33m106[39m,  [33m39[39m, [33m239[39m,  [33m50[39m, [33m140[39m, [33m235[39m,  [33m56[39m, [33m227[39m,
+  [33m110[39m, [33m145[39m, [33m213[39m, [33m173[39m, [33m232[39m,  [33m22[39m,  [33m22[39m, [33m183[39m,
+  [33m226[39m, [33m242[39m,  [33m96[39m,  [33m86[39m,  [33m29[39m,  [33m77[39m,   [33m4[39m,  [33m68[39m,
+  [33m149[39m,   [33m5[39m,  [33m73[39m, [33m210[39m, [33m163[39m,  [33m54[39m, [33m202[39m, [33m146[39m
+]
 
             </system-out>
+        </testcase>
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; approves a Tier 2 loan and gives the requested amount" time="0.005">
+        </testcase>
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; approves a Tier 3 loan" time="0.005">
+        </testcase>
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; rejects a loan for a non-eligible applicant" time="0.005">
+        </testcase>
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; creates multiple loans for the same user with incrementing IDs" time="0.009">
+        </testcase>
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; throws an error if the user is blacklisted" time="0.004">
+        </testcase>
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; allows admin to blacklist and remove a user" time="0.004">
+        </testcase>
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; migrates a small number of loans (1 batch) and cleans up" time="0.017">
+            <system-out>
+1 { authorizedAmount: [33m100n[39m, status: [33m0[39m }
+2 { authorizedAmount: [33m200n[39m, status: [33m0[39m }
+3 { authorizedAmount: [33m300n[39m, status: [33m0[39m }
+Change PIN circuit returned: {
+  blacklist: {
+    isEmpty: [36m[Function: isEmpty][39m,
+    size: [36m[Function: size][39m,
+    member: [36m[Function: member][39m,
+    [[32mSymbol(Symbol.iterator)[39m]: [36m[Function: [Symbol.iterator]][39m
+  },
+  loans: {
+    isEmpty: [36m[Function: isEmpty][39m,
+    size: [36m[Function: size][39m,
+    member: [36m[Function: member][39m,
+    lookup: [36m[Function: lookup][39m
+  },
+  onGoingPinMigration: {
+    isEmpty: [36m[Function: isEmpty][39m,
+    size: [36m[Function: size][39m,
+    member: [36m[Function: member][39m,
+    lookup: [36m[Function: lookup][39m,
+    [[32mSymbol(Symbol.iterator)[39m]: [36m[Function: [Symbol.iterator]][39m
+  },
+  admin: [36m[Getter][39m,
+  usersCount: [36m[Getter][39m
+}
+After PIN change:
+1 { authorizedAmount: [33m100n[39m, status: [33m0[39m }
+2 { authorizedAmount: [33m200n[39m, status: [33m0[39m }
+3 { authorizedAmount: [33m300n[39m, status: [33m0[39m }
+Ongoing migration entry: [33m3n[39m
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; migrates multiple batches of loans (7 loans) correctly" time="0.025">
+        </testcase>
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; throws an error if user tries to requestLoan during migration" time="0.023">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/test/zkloan-credit-scorer.test.ts:310:8
+            </failure>
         </testcase>
     </testsuite>
 </testsuites>
