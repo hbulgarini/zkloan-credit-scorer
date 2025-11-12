@@ -148,7 +148,7 @@ export circuit changePin(oldPin: Uint<16>, newPin: Uint<16>): [] {
             // Insert into new map with new (destination) ID
             loans.lookup(disclosedNewPk).insert(destinationId, disclose(loan));
             
-            // Remove from old map
+            // Remove from old map NOT WORKING in compact-runtime
           //  loans.lookup(disclosedOldPk).remove(sourceId);
             
             // Update the ledger tracker with the last *source* ID we processed
@@ -157,7 +157,7 @@ export circuit changePin(oldPin: Uint<16>, newPin: Uint<16>): [] {
             // --- No loan found at this source ID ---
             // This signals we've reached the end of the user's loans.
             
-            // Clean up the migration tracker
+            // Clean up the migration tracker - map NOT WORKING in compact-runtime
         //    onGoingPinMigration.remove(disclosedOldPk);
             
             // Clean up the old user's empty loan map

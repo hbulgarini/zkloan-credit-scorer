@@ -273,7 +273,7 @@ describe("ZKLoanCreditScorer smart contract", () => {
     expect(ledger.loans.lookup(newPubKey).lookup(6n).authorizedAmount).toEqual(600n); // Check loan 6
     expect(ledger.loans.lookup(newPubKey).lookup(7n).authorizedAmount).toEqual(700n); // Check loan 7
 
-    // As it seems removing itmes from a Map does not work these are the test being excluded for now
+    // As it seems removing items from a Map does not work these are the test being excluded for now.  NOT WORKING in compact-runtime
     //  expect(ledger.loans.member(oldPubKey)).toBeFalsy(); 
      // expect(ledger.onGoingPinMigration.lookup(oldPubKey)).toBeFalsy();
     /**/
@@ -354,7 +354,7 @@ describe("ZKLoanCreditScorer smart contract", () => {
 
     ledger = simulator.getLedger();
 
-    // Migration should be complete, and old entries cleaned up
+    // Migration should be complete, and old entries cleaned up.    NOT WORKING in compact-runtime
    // expect(ledger.loans.member(oldPubKey)).toBeFalsy();
    // expect(ledger.onGoingPinMigration.member(oldPubKey)).toBeFalsy();
 
