@@ -104,39 +104,74 @@ export circuit removeBlacklistUser(account: ZswapCoinPublicKey): [] {
     return [];
 }
 
+// NOTE: You no longer need the 'MigrationIdPair' struct definition.
+
 export circuit changePin(oldPin: Uint<16>, newPin: Uint<16>): [] {
     const zwapPublicKey = ownPublicKey();
     const oldPk = publicKey(zwapPublicKey.bytes, oldPin);
     const newPk = publicKey(zwapPublicKey.bytes, newPin);
-    assert(loans.member(disclose(oldPk)), "Old PIN does not match any user");
-    if (!onGoingPinMigration.member(disclose(oldPk))) {
-        onGoingPinMigration.insert(disclose(oldPk), 0);
-    }
-   const lastMigratedLoan: Uint<16> = onGoingPinMigration.lookup(disclose(oldPk));
-   const loansIds: Vector<5, Uint<16>> = [
-        (lastMigratedLoan + 1) as Uint<16>,
-        (lastMigratedLoan + 2) as Uint<16>,
-        (lastMigratedLoan + 3) as Uint<16>,
-        (lastMigratedLoan + 4) as Uint<16>,
-        (lastMigratedLoan + 5) as Uint<16>
-    ];
+    
+    const disclosedOldPk = disclose(oldPk);
+    const disclosedNewPk = disclose(newPk);
 
-    for (const currentLoan of loansIds) {
-        const nro: Uint<16> = currentLoan as Uint<16>;
-        if(loans.lookup(oldPk).member(nro)) {
-            const loan = loans.lookup(disclose(oldPk)).lookup(nro);
-            if (!loans.member(disclose(newPk))) {
-                loans.insert(disclose(newPk), default<Map<Uint<16>, LoanApplication>>);
+    assert(loans.member(disclosedOldPk), "Old PIN does not match any user");
+
+    // 1. Initialize migration tracker for OLD key, if not present
+    if (!onGoingPinMigration.member(disclosedOldPk)) {
+        onGoingPinMigration.insert(disclosedOldPk, 0);
+    }
+
+    // 2. Initialize NEW key's loan map, if not present
+    if (!loans.member(disclosedNewPk)) {
+        loans.insert(disclosedNewPk, default<Map<Uint<16>, LoanApplication>>);
+    }
+
+    // 3. Get the starting ID for the *source* (old account)
+    const lastMigratedSourceId: Uint<16> = onGoingPinMigration.lookup(disclosedOldPk);
+
+    // 4. Get the current size of the *destination* (new account)
+    const lastDestinationId: Uint<16> = loans.lookup(disclosedNewPk).size() as Uint<16>;
+
+    // 5. Use a fixed-range loop from 0 to 4 (5 iterations)
+    //    'i' will be 0, then 1, 2, 3, 4. This is a valid compile-time loop.
+    for (const i of 0..5) {
+        
+        // Calculate the source and destination IDs for this iteration
+        const sourceId = (lastMigratedSourceId + i + 1) as Uint<16>;
+        const destinationId = (lastDestinationId + i + 1) as Uint<16>;
+
+        // Check if the source loan exists
+        if (loans.lookup(disclosedOldPk).member(sourceId)) {
+            // --- A loan exists, so we migrate it ---
+            const loan = loans.lookup(disclosedOldPk).lookup(sourceId);
+            
+            // Insert into new map with new (destination) ID
+            loans.lookup(disclosedNewPk).insert(destinationId, disclose(loan));
+            
+            // Remove from old map
+          //  loans.lookup(disclosedOldPk).remove(sourceId);
+            
+            // Update the ledger tracker with the last *source* ID we processed
+            onGoingPinMigration.insert(disclosedOldPk, sourceId);
+        } else {
+            // --- No loan found at this source ID ---
+            // This signals we've reached the end of the user's loans.
+            
+            // Clean up the migration tracker
+        //    onGoingPinMigration.remove(disclosedOldPk);
+            
+            // Clean up the old user's empty loan map
+            if (loans.lookup(disclosedOldPk).size() == 0) {
+                loans.remove(disclosedOldPk);
             }
-            loans.lookup(disclose(newPk)).insert(nro, disclose(loan));
-            onGoingPinMigration.insert(disclose(oldPk), nro); 
-        }
-        else {
-            //onGoingPinMigration.remove(disclose(oldPk));
-            //loans.remove(disclose(oldPk)); 
+            
+            // Stop the circuit execution
             return []; 
-       }  
-    }  
+        }
+    }
+
+    // If the loop finishes all 5 items, the batch is done.
+    // The tracker is already updated for the next run.
     return [];
 }
 

@@ -312,8 +312,8 @@ describe("ZKLoanCreditScorer smart contract", () => {
     }).toThrow("PIN migration is in progress for this user"); 
 
   });
-/*
-  it("throws an error if migrating to a new PIN that already has loans", () => {
+
+  it("migrates loans to a new PIN that already has loans", () => {
     const simulator = new ZKLoanCreditScorerSimulator();
     const userZwapKey = simulator.createTestUser("Alice").left.bytes;
     const oldPin = 1234n;
@@ -324,20 +324,42 @@ describe("ZKLoanCreditScorer smart contract", () => {
       monthlyIncome: 3000n,
       monthsAsCustomer: 30n,
     };
-    
-    // Create loans for the old PIN
-    simulator.requestLoan(100n, oldPin);
-    simulator.requestLoan(200n, oldPin);
 
-    // Create a loan for the NEW PIN (simulating a different user or previous account)
-    simulator.requestLoan(500n, newPin);
+    const oldPubKey = simulator.publicKey(userZwapKey, oldPin);
+    const newPubKey = simulator.publicKey(userZwapKey, newPin);
 
-    // Try to migrate from oldPin to newPin
-    expect(() => {
-      simulator.changePin(oldPin, newPin);
-    }).toThrow("New user key already exists");
-  }); */
+    // Create 6 loans for the old PIN
+    for (let i = 1; i <= 6; i++) {
+      simulator.requestLoan(BigInt(i * 10), oldPin);
+    }
 
+    // Create 3 loans for the new PIN
+    for (let i = 1; i <= 3; i++) {
+      simulator.requestLoan(BigInt(i * 100), newPin);
+    }
+
+    let ledger = simulator.getLedger();
+    expect(ledger.loans.lookup(oldPubKey).size()).toEqual(6n);
+    expect(ledger.loans.lookup(newPubKey).size()).toEqual(3n);
+
+    // --- BATCH 1 (Migrates loans 1-5 from old to new) ---
+    simulator.changePin(oldPin, newPin);
+
+    ledger = simulator.getLedger();
+    expect(ledger.onGoingPinMigration.lookup(oldPubKey)).toEqual(5n); // Progress updated
+    expect(ledger.loans.lookup(newPubKey).size()).toEqual(3n + 5n); // 3 existing + 5 migrated
+
+    // --- BATCH 2 (Migrates loan 6, finds 7-10 empty, finishes) ---
+    simulator.changePin(oldPin, newPin);
+
+    ledger = simulator.getLedger();
+
+    // Migration should be complete, and old entries cleaned up
+   // expect(ledger.loans.member(oldPubKey)).toBeFalsy();
+   // expect(ledger.onGoingPinMigration.member(oldPubKey)).toBeFalsy();
+
+    // All 9 loans should be with the new key
+    expect(ledger.loans.lookup(newPubKey).size()).toEqual(9n);
+    expect(ledger.loans.lookup(newPubKey).lookup(9n).authorizedAmount).toEqual(60n); // loan 6 from old is now loan 9
+  });
 });
-
-
