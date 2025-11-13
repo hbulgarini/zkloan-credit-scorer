@@ -116,62 +116,59 @@ export circuit changePin(oldPin: Uint<16>, newPin: Uint<16>): [] {
 
     assert(loans.member(disclosedOldPk), "Old PIN does not match any user");
 
-    // 1. Initialize migration tracker for OLD key, if not present
     if (!onGoingPinMigration.member(disclosedOldPk)) {
         onGoingPinMigration.insert(disclosedOldPk, 0);
     }
-
-    // 2. Initialize NEW key's loan map, if not present
     if (!loans.member(disclosedNewPk)) {
         loans.insert(disclosedNewPk, default<Map<Uint<16>, LoanApplication>>);
     }
 
-    // 3. Get the starting ID for the *source* (old account)
+    // This lookup is now safe because we just initialized it
     const lastMigratedSourceId: Uint<16> = onGoingPinMigration.lookup(disclosedOldPk);
-
-    // 4. Get the current size of the *destination* (new account)
     const lastDestinationId: Uint<16> = loans.lookup(disclosedNewPk).size() as Uint<16>;
 
-    // 5. Use a fixed-range loop from 0 to 4 (5 iterations)
-    //    'i' will be 0, then 1, 2, 3, 4. This is a valid compile-time loop.
     for (const i of 0..5) {
         
-        // Calculate the source and destination IDs for this iteration
-        const sourceId = (lastMigratedSourceId + i + 1) as Uint<16>;
-        const destinationId = (lastDestinationId + i + 1) as Uint<16>;
+        // *** THE FIX ***
+        // At the start of EACH iteration, check if migration is still
+        // in progress. If a previous iteration removed the key,
+        // this check will fail and this block will be skipped.
+        if (onGoingPinMigration.member(disclosedOldPk)) {
+            
+            const sourceId = (lastMigratedSourceId + i + 1) as Uint<16>;
+            const destinationId = (lastDestinationId + i + 1) as Uint<16>;
 
-        // Check if the source loan exists
-        if (loans.lookup(disclosedOldPk).member(sourceId)) {
-            // --- A loan exists, so we migrate it ---
-            const loan = loans.lookup(disclosedOldPk).lookup(sourceId);
-            
-            // Insert into new map with new (destination) ID
-            loans.lookup(disclosedNewPk).insert(destinationId, disclose(loan));
-            
-            // Remove from old map NOT WORKING in compact-runtime
-          //  loans.lookup(disclosedOldPk).remove(sourceId);
-            
-            // Update the ledger tracker with the last *source* ID we processed
-            onGoingPinMigration.insert(disclosedOldPk, sourceId);
-        } else {
-            // --- No loan found at this source ID ---
-            // This signals we've reached the end of the user's loans.
-            
-            // Clean up the migration tracker - map NOT WORKING in compact-runtime
-        //    onGoingPinMigration.remove(disclosedOldPk);
-            
-            // Clean up the old user's empty loan map
-            if (loans.lookup(disclosedOldPk).size() == 0) {
-                loans.remove(disclosedOldPk);
+            // Now, we can safely check the loans map
+            if (loans.lookup(disclosedOldPk).member(sourceId)) {
+                // --- A loan exists: Migrate it ---
+                const loan = loans.lookup(disclosedOldPk).lookup(sourceId);
+                loans.lookup(disclosedNewPk).insert(destinationId, disclose(loan));
+                
+                // UNCOMMENT THIS:
+                loans.lookup(disclosedOldPk).remove(sourceId); 
+                
+                // Update progress
+                onGoingPinMigration.insert(disclosedOldPk, sourceId);
+
+            } else {
+                // --- No more loans found: Clean up and set stop flag ---
+                
+                // UNCOMMENT THIS: This is the "stop flag"
+                onGoingPinMigration.remove(disclosedOldPk); 
+                
+                // Now it's safe to check size and remove the loans map
+                if (loans.lookup(disclosedOldPk).size() == 0) {
+                    loans.remove(disclosedOldPk);
+                }
+                
+                // DO NOT RETURN HERE.
             }
-            
-            // Stop the circuit execution
-            return []; 
         }
+        // If onGoingPinMigration doesn't have oldPk, this iteration
+        // does nothing, and the next one will also do nothing.
     }
 
-    // If the loop finishes all 5 items, the batch is done.
-    // The tracker is already updated for the next run.
+    // The circuit finishes normally after all 5 (unrolled) blocks.
     return [];
 }
 

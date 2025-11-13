@@ -171,7 +171,7 @@ describe("ZKLoanCreditScorer smart contract", () => {
     expect(ledger.blacklist.member({ bytes: bobZwapKey })).toBeFalsy();
   });
 
-  it("migrates a small number of loans (1 batch) and cleans up", () => {
+it("migrates a small number of loans (1 batch) and cleans up", () => {
     const simulator = new ZKLoanCreditScorerSimulator();
     const userZwapKey = simulator.createTestUser("Alice").left.bytes;
     const oldPin = 1234n;
@@ -193,30 +193,21 @@ describe("ZKLoanCreditScorer smart contract", () => {
 
     let ledger = simulator.getLedger();
     expect(ledger.loans.lookup(oldPubKey).size()).toEqual(3n);
- 
-    const userLoans = ledger.loans.lookup(oldPubKey);
-    for (let i = 1n, n = userLoans.size(); i <= n; i++) {
-      const loan = userLoans.lookup(i);
-      console.log(i.toString(), loan);
-    }
 
     // Call changePin. This should migrate 1, 2, 3 and find that 4, 5 are empty.
-    const value = simulator.changePin(oldPin, newPin);
-    console.log("Change PIN circuit returned:", value);
+    simulator.changePin(oldPin, newPin);
+    
     ledger = simulator.getLedger();
-    console.log("After PIN change:");
-    const newuserLoans = ledger.loans.lookup(oldPubKey);
-    for (let i = 1n, n = newuserLoans.size(); i <= n; i++) {
-      const loan = newuserLoans.lookup(i);
-      console.log(i.toString(), loan);
-    }
-
-    const onGoingPinMigrationLast = ledger.onGoingPinMigration.lookup(oldPubKey);
-    console.log("Ongoing migration entry:", onGoingPinMigrationLast);
-   
+    
+    // ***
+    // *** THE FIX IS HERE ***
+    //
+    // The circuit *successfully* removed these keys.
+    // Your test should check that they are gone, not look them up.
+    
     // Migration should be complete, and old entries cleaned up
-   // expect(ledger.loans.member(oldPubKey)).toBeFalsy(); 
-    //expect(ledger.onGoingPinMigration.member(oldPubKey)).toBeFalsy();
+    expect(ledger.loans.member(oldPubKey)).toBeFalsy(); 
+    expect(ledger.onGoingPinMigration.member(oldPubKey)).toBeFalsy();
     
     // All 3 loans should be with the new key
     expect(ledger.loans.member(newPubKey)).toBeTruthy();
@@ -261,22 +252,25 @@ describe("ZKLoanCreditScorer smart contract", () => {
     // As it seems removing itmes from a Map does not work these are the test being excluded for now
     // expect(ledger.loans.lookup(oldPubKey).member(6n)).toBeTruthy(); // Check loan 6 still with old key
 
-    // --- BATCH 2 (Migrates 6-7, finds 8-10 empty, finishes) ---
+// --- BATCH 2 (Migrates 6-7, finds 8-10 empty, finishes) ---
     simulator.changePin(oldPin, newPin);
 
     ledger = simulator.getLedger();
     
-    expect(ledger.onGoingPinMigration.lookup(oldPubKey)).toEqual(7n);
+    // ***
+    // *** FIX FOR THE TEST ***
+    //
+    // Check that the migration key was successfully removed.
+    expect(ledger.onGoingPinMigration.member(oldPubKey)).toBeFalsy();
     
-    // All loans should be with the new key
+    // Check that all loans are now with the new key
     expect(ledger.loans.lookup(newPubKey).size()).toEqual(7n); 
-    expect(ledger.loans.lookup(newPubKey).lookup(6n).authorizedAmount).toEqual(600n); // Check loan 6
-    expect(ledger.loans.lookup(newPubKey).lookup(7n).authorizedAmount).toEqual(700n); // Check loan 7
+    expect(ledger.loans.lookup(newPubKey).lookup(6n).authorizedAmount).toEqual(600n);
+    expect(ledger.loans.lookup(newPubKey).lookup(7n).authorizedAmount).toEqual(700n);
 
-    // As it seems removing items from a Map does not work these are the test being excluded for now.  NOT WORKING in compact-runtime
-    //  expect(ledger.loans.member(oldPubKey)).toBeFalsy(); 
-     // expect(ledger.onGoingPinMigration.lookup(oldPubKey)).toBeFalsy();
-    /**/
+    // If you can get the map item 'remove' to work,
+    // you can uncomment this final check:
+    // expect(ledger.loans.member(oldPubKey)).toBeFalsy();
 
   });
 

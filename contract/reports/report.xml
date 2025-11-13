@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuites name="vitest tests" tests="12" failures="0" errors="0" time="0.633">
-    <testsuite name="src/test/zkloan-credit-scorer.test.ts" timestamp="2025-11-12T16:16:26.101Z" hostname="ServerLaptop" tests="12" failures="0" errors="0" skipped="0" time="0.16">
-        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; generates initial ledger state deterministically" time="0.017">
+<testsuites name="vitest tests" tests="12" failures="0" errors="0" time="0.66">
+    <testsuite name="src/test/zkloan-credit-scorer.test.ts" timestamp="2025-11-13T09:46:45.513Z" hostname="ServerLaptop" tests="12" failures="0" errors="0" skipped="0" time="0.163">
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; generates initial ledger state deterministically" time="0.023">
         </testcase>
-        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; approves a Tier 1 loan and caps at the max amount" time="0.006">
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; approves a Tier 1 loan and caps at the max amount" time="0.007">
             <system-out>
 User public key: Uint8Array(32) [
   [33m106[39m,  [33m39[39m, [33m239[39m,  [33m50[39m, [33m140[39m, [33m235[39m,  [33m56[39m, [33m227[39m,
@@ -14,59 +14,25 @@ User public key: Uint8Array(32) [
 
             </system-out>
         </testcase>
-        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; approves a Tier 2 loan and gives the requested amount" time="0.004">
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; approves a Tier 2 loan and gives the requested amount" time="0.006">
         </testcase>
         <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; approves a Tier 3 loan" time="0.005">
         </testcase>
-        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; rejects a loan for a non-eligible applicant" time="0.004">
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; rejects a loan for a non-eligible applicant" time="0.005">
         </testcase>
-        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; creates multiple loans for the same user with incrementing IDs" time="0.008">
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; creates multiple loans for the same user with incrementing IDs" time="0.009">
         </testcase>
         <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; throws an error if the user is blacklisted" time="0.004">
         </testcase>
-        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; allows admin to blacklist and remove a user" time="0.005">
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; allows admin to blacklist and remove a user" time="0.006">
         </testcase>
-        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; migrates a small number of loans (1 batch) and cleans up" time="0.023">
-            <system-out>
-1 { authorizedAmount: [33m100n[39m, status: [33m0[39m }
-2 { authorizedAmount: [33m200n[39m, status: [33m0[39m }
-3 { authorizedAmount: [33m300n[39m, status: [33m0[39m }
-Change PIN circuit returned: {
-  blacklist: {
-    isEmpty: [36m[Function: isEmpty][39m,
-    size: [36m[Function: size][39m,
-    member: [36m[Function: member][39m,
-    [[32mSymbol(Symbol.iterator)[39m]: [36m[Function: [Symbol.iterator]][39m
-  },
-  loans: {
-    isEmpty: [36m[Function: isEmpty][39m,
-    size: [36m[Function: size][39m,
-    member: [36m[Function: member][39m,
-    lookup: [36m[Function: lookup][39m
-  },
-  onGoingPinMigration: {
-    isEmpty: [36m[Function: isEmpty][39m,
-    size: [36m[Function: size][39m,
-    member: [36m[Function: member][39m,
-    lookup: [36m[Function: lookup][39m,
-    [[32mSymbol(Symbol.iterator)[39m]: [36m[Function: [Symbol.iterator]][39m
-  },
-  admin: [36m[Getter][39m,
-  usersCount: [36m[Getter][39m
-}
-After PIN change:
-1 { authorizedAmount: [33m100n[39m, status: [33m0[39m }
-2 { authorizedAmount: [33m200n[39m, status: [33m0[39m }
-3 { authorizedAmount: [33m300n[39m, status: [33m0[39m }
-Ongoing migration entry: [33m3n[39m
-
-            </system-out>
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; migrates a small number of loans (1 batch) and cleans up" time="0.016">
         </testcase>
-        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; migrates multiple batches of loans (7 loans) correctly" time="0.033">
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; migrates multiple batches of loans (7 loans) correctly" time="0.03">
         </testcase>
-        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; throws an error if user tries to requestLoan during migration" time="0.023">
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; throws an error if user tries to requestLoan during migration" time="0.021">
         </testcase>
-        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; migrates loans to a new PIN that already has loans" time="0.026">
+        <testcase classname="src/test/zkloan-credit-scorer.test.ts" name="ZKLoanCreditScorer smart contract &gt; migrates loans to a new PIN that already has loans" time="0.029">
         </testcase>
     </testsuite>
 </testsuites>
