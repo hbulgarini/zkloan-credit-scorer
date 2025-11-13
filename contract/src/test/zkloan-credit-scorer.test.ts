@@ -199,11 +199,6 @@ it("migrates a small number of loans (1 batch) and cleans up", () => {
     
     ledger = simulator.getLedger();
     
-    // ***
-    // *** THE FIX IS HERE ***
-    //
-    // The circuit *successfully* removed these keys.
-    // Your test should check that they are gone, not look them up.
     
     // Migration should be complete, and old entries cleaned up
     expect(ledger.loans.member(oldPubKey)).toBeFalsy(); 
@@ -246,20 +241,17 @@ it("migrates a small number of loans (1 batch) and cleans up", () => {
     expect(ledger.loans.member(newPubKey)).toBeTruthy(); // New user map created
     expect(ledger.onGoingPinMigration.lookup(oldPubKey)).toEqual(5n); // Progress updated
     // As it seems removing itmes from a Map does not work these are the test being excluded for now
-    //expect(ledger.loans.lookup(oldPubKey).size()).toEqual(2n); // 7 - 5 = 2
+    expect(ledger.loans.lookup(oldPubKey).size()).toEqual(2n); // 7 - 5 = 2
     expect(ledger.loans.lookup(newPubKey).size()).toEqual(5n);
     expect(ledger.loans.lookup(newPubKey).lookup(5n).authorizedAmount).toEqual(500n); // Check loan 5
     // As it seems removing itmes from a Map does not work these are the test being excluded for now
-    // expect(ledger.loans.lookup(oldPubKey).member(6n)).toBeTruthy(); // Check loan 6 still with old key
+    expect(ledger.loans.lookup(oldPubKey).member(6n)).toBeTruthy(); // Check loan 6 still with old key
 
 // --- BATCH 2 (Migrates 6-7, finds 8-10 empty, finishes) ---
     simulator.changePin(oldPin, newPin);
 
     ledger = simulator.getLedger();
     
-    // ***
-    // *** FIX FOR THE TEST ***
-    //
     // Check that the migration key was successfully removed.
     expect(ledger.onGoingPinMigration.member(oldPubKey)).toBeFalsy();
     
@@ -270,7 +262,7 @@ it("migrates a small number of loans (1 batch) and cleans up", () => {
 
     // If you can get the map item 'remove' to work,
     // you can uncomment this final check:
-    // expect(ledger.loans.member(oldPubKey)).toBeFalsy();
+    expect(ledger.loans.member(oldPubKey)).toBeFalsy();
 
   });
 
@@ -349,8 +341,8 @@ it("migrates a small number of loans (1 batch) and cleans up", () => {
     ledger = simulator.getLedger();
 
     // Migration should be complete, and old entries cleaned up.    NOT WORKING in compact-runtime
-   // expect(ledger.loans.member(oldPubKey)).toBeFalsy();
-   // expect(ledger.onGoingPinMigration.member(oldPubKey)).toBeFalsy();
+    expect(ledger.loans.member(oldPubKey)).toBeFalsy();
+   expect(ledger.onGoingPinMigration.member(oldPubKey)).toBeFalsy();
 
     // All 9 loans should be with the new key
     expect(ledger.loans.lookup(newPubKey).size()).toEqual(9n);
