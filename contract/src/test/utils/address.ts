@@ -2,10 +2,8 @@ import {
   convert_bigint_to_Uint8Array,
   encodeCoinPublicKey,
 } from '@midnight-ntwrk/compact-runtime';
-import { encodeContractAddress } from '@midnight-ntwrk/ledger';
+import { encodeContractAddress } from '@midnight-ntwrk/ledger-v6';
 import type * as Compact from '../../managed/zkloan-credit-scorer/contract/index.cjs';
-
-const PREFIX_ADDRESS = '0200';
 
 /**
  * @description Converts an ASCII string to its hexadecimal representation,
@@ -27,14 +25,13 @@ export const encodeToPK = (str: string): any  => ({ // TODO: look for ZswapCoinP
   hex: toHexPadded(str),
 });
 
-/* /**
+/**
  * @description Generates ContractAddress from `str` for testing purposes.
- *              Prepends 32-byte hex with PREFIX_ADDRESS before encoding.
  * @param str String to hexify and encode.
- * @returns Encoded `ZswapCoinPublicKey`.
+ * @returns Encoded ContractAddress.
  */
-export const encodeToAddress = (str: string): any  => ({ // TODO: look for ZswapCoinPublicKey type
-  bytes: encodeContractAddress(PREFIX_ADDRESS + toHexPadded(str)),
+export const encodeToAddress = (str: string): any  => ({
+  bytes: encodeContractAddress(toHexPadded(str)),
 }); 
 
 /**

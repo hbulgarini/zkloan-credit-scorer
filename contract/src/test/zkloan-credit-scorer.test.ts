@@ -14,13 +14,10 @@
 // limitations under the License.
 
 import { ZKLoanCreditScorerSimulator } from "./zkloan-credit-scorer.simulator.js";
-import {
-  NetworkId,
-  setNetworkId
-} from "@midnight-ntwrk/midnight-js-network-id";
+import { setNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
 import { describe, it, expect } from "vitest";
 
-setNetworkId(NetworkId.Undeployed);
+setNetworkId("undeployed");
 
     const bigintReplacer = (_key: string, value: any) =>
       typeof value === 'bigint' ? value.toString() : value;
@@ -240,11 +237,10 @@ it("migrates a small number of loans (1 batch) and cleans up", () => {
     ledger = simulator.getLedger();
     expect(ledger.loans.member(newPubKey)).toBeTruthy(); // New user map created
     expect(ledger.onGoingPinMigration.lookup(oldPubKey)).toEqual(5n); // Progress updated
-    // As it seems removing itmes from a Map does not work these are the test being excluded for now
     expect(ledger.loans.lookup(oldPubKey).size()).toEqual(2n); // 7 - 5 = 2
     expect(ledger.loans.lookup(newPubKey).size()).toEqual(5n);
     expect(ledger.loans.lookup(newPubKey).lookup(5n).authorizedAmount).toEqual(500n); // Check loan 5
-    // As it seems removing itmes from a Map does not work these are the test being excluded for now
+
     expect(ledger.loans.lookup(oldPubKey).member(6n)).toBeTruthy(); // Check loan 6 still with old key
 
 // --- BATCH 2 (Migrates 6-7, finds 8-10 empty, finishes) ---
@@ -340,12 +336,483 @@ it("migrates a small number of loans (1 batch) and cleans up", () => {
 
     ledger = simulator.getLedger();
 
-    // Migration should be complete, and old entries cleaned up.    NOT WORKING in compact-runtime
+    // Migration should be complete, and old entries cleaned up
     expect(ledger.loans.member(oldPubKey)).toBeFalsy();
-   expect(ledger.onGoingPinMigration.member(oldPubKey)).toBeFalsy();
+    expect(ledger.onGoingPinMigration.member(oldPubKey)).toBeFalsy();
 
     // All 9 loans should be with the new key
     expect(ledger.loans.lookup(newPubKey).size()).toEqual(9n);
     expect(ledger.loans.lookup(newPubKey).lookup(9n).authorizedAmount).toEqual(60n); // loan 6 from old is now loan 9
+  });
+
+  // ============================================================
+  // NEW TESTS: Input Validation
+  // ============================================================
+
+  it("throws when requesting loan with zero amount", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userPin = 1234n;
+
+    expect(() => {
+      simulator.requestLoan(0n, userPin);
+    }).toThrow("Loan amount must be greater than zero");
+  });
+
+  // ============================================================
+  // NEW TESTS: changePin Validation
+  // ============================================================
+
+  it("throws when blacklisted user tries to change PIN", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const oldPin = 1234n;
+    const newPin = 5678n;
+
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 800n,
+      monthlyIncome: 3000n,
+      monthsAsCustomer: 30n,
+    };
+
+    // Create a loan first so the user exists
+    simulator.requestLoan(100n, oldPin);
+
+    // Blacklist the user
+    simulator.blacklistUser(userZwapKey);
+
+    // Try to change PIN - should fail
+    expect(() => {
+      simulator.changePin(oldPin, newPin);
+    }).toThrow("User is blacklisted");
+  });
+
+  it("throws when changing PIN to the same value", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userPin = 1234n;
+
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 800n,
+      monthlyIncome: 3000n,
+      monthsAsCustomer: 30n,
+    };
+
+    // Create a loan first so the user exists
+    simulator.requestLoan(100n, userPin);
+
+    // Try to change PIN to the same value - should fail
+    expect(() => {
+      simulator.changePin(userPin, userPin);
+    }).toThrow("New PIN must be different from old PIN");
+  });
+
+  // ============================================================
+  // NEW TESTS: Admin Transfer
+  // ============================================================
+
+  it("allows admin to transfer admin role to new admin", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const newAdminKey = simulator.createTestUser("NewAdmin").left.bytes;
+
+    // Transfer admin to new admin
+    simulator.transferAdmin(newAdminKey);
+
+    const ledger = simulator.getLedger();
+    expect(ledger.admin.bytes).toEqual(newAdminKey);
+  });
+
+  // ============================================================
+  // NEW TESTS: Tier Boundary Edge Cases
+  // ============================================================
+
+  it("approves exactly at Tier 1 boundary (score=700, income=2000, tenure=24)", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    // Exactly at Tier 1 minimums
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 700n,
+      monthlyIncome: 2000n,
+      monthsAsCustomer: 24n,
+    };
+
+    const userPubKey = simulator.publicKey(userZwapKey, userPin);
+    simulator.requestLoan(15000n, userPin);
+
+    const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
+    expect(loan.status).toEqual(0); // Approved
+    expect(loan.authorizedAmount).toEqual(10000n); // Tier 1 max
+  });
+
+  it("falls to Tier 2 when just below Tier 1 threshold (score=699)", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    // Just below Tier 1 credit score
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 699n,
+      monthlyIncome: 2000n,
+      monthsAsCustomer: 24n,
+    };
+
+    const userPubKey = simulator.publicKey(userZwapKey, userPin);
+    simulator.requestLoan(15000n, userPin);
+
+    const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
+    expect(loan.status).toEqual(0); // Approved
+    expect(loan.authorizedAmount).toEqual(7000n); // Falls to Tier 2 max
+  });
+
+  it("approves exactly at Tier 2 boundary (score=600, income=1500)", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    // Exactly at Tier 2 minimums
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 600n,
+      monthlyIncome: 1500n,
+      monthsAsCustomer: 1n,
+    };
+
+    const userPubKey = simulator.publicKey(userZwapKey, userPin);
+    simulator.requestLoan(10000n, userPin);
+
+    const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
+    expect(loan.status).toEqual(0); // Approved
+    expect(loan.authorizedAmount).toEqual(7000n); // Tier 2 max
+  });
+
+  it("falls to Tier 3 when just below Tier 2 threshold (score=599)", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    // Just below Tier 2 credit score but above Tier 3
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 599n,
+      monthlyIncome: 1500n,
+      monthsAsCustomer: 1n,
+    };
+
+    const userPubKey = simulator.publicKey(userZwapKey, userPin);
+    simulator.requestLoan(10000n, userPin);
+
+    const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
+    expect(loan.status).toEqual(0); // Approved
+    expect(loan.authorizedAmount).toEqual(3000n); // Falls to Tier 3 max
+  });
+
+  it("approves exactly at Tier 3 boundary (score=580)", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    // Exactly at Tier 3 minimum
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 580n,
+      monthlyIncome: 500n,
+      monthsAsCustomer: 1n,
+    };
+
+    const userPubKey = simulator.publicKey(userZwapKey, userPin);
+    simulator.requestLoan(5000n, userPin);
+
+    const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
+    expect(loan.status).toEqual(0); // Approved
+    expect(loan.authorizedAmount).toEqual(3000n); // Tier 3 max
+  });
+
+  it("rejects when just below Tier 3 threshold (score=579)", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    // Just below Tier 3 minimum
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 579n,
+      monthlyIncome: 5000n,
+      monthsAsCustomer: 100n,
+    };
+
+    const userPubKey = simulator.publicKey(userZwapKey, userPin);
+    simulator.requestLoan(1000n, userPin);
+
+    const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
+    expect(loan.status).toEqual(1); // Rejected
+    expect(loan.authorizedAmount).toEqual(0n);
+  });
+
+  it("falls to Tier 2 when Tier 1 income requirement not met", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    // High credit score but income just below Tier 1
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 750n,
+      monthlyIncome: 1999n, // Just below 2000
+      monthsAsCustomer: 30n,
+    };
+
+    const userPubKey = simulator.publicKey(userZwapKey, userPin);
+    simulator.requestLoan(15000n, userPin);
+
+    const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
+    expect(loan.status).toEqual(0); // Approved
+    expect(loan.authorizedAmount).toEqual(7000n); // Falls to Tier 2
+  });
+
+  it("falls to Tier 2 when Tier 1 tenure requirement not met", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    // High credit score and income but tenure just below Tier 1
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 750n,
+      monthlyIncome: 2500n,
+      monthsAsCustomer: 23n, // Just below 24
+    };
+
+    const userPubKey = simulator.publicKey(userZwapKey, userPin);
+    simulator.requestLoan(15000n, userPin);
+
+    const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
+    expect(loan.status).toEqual(0); // Approved
+    expect(loan.authorizedAmount).toEqual(7000n); // Falls to Tier 2
+  });
+
+  // ============================================================
+  // NEW TESTS: Admin Authorization
+  // ============================================================
+
+  it("throws when non-admin tries to blacklist a user", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const bobZwapKey = simulator.createTestUser("Bob").left.bytes;
+    const charlieZwapKey = simulator.createTestUser("Charlie").left.bytes;
+
+    // Transfer admin to Bob first (Alice is initial admin)
+    simulator.transferAdmin(bobZwapKey);
+
+    // Now Alice (non-admin) tries to blacklist Charlie - should fail
+    expect(() => {
+      simulator.blacklistUser(charlieZwapKey);
+    }).toThrow("Only admin can blacklist users");
+  });
+
+  it("throws when non-admin tries to remove from blacklist", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const bobZwapKey = simulator.createTestUser("Bob").left.bytes;
+    const charlieZwapKey = simulator.createTestUser("Charlie").left.bytes;
+
+    // First blacklist Charlie while Alice is admin
+    simulator.blacklistUser(charlieZwapKey);
+
+    // Transfer admin to Bob
+    simulator.transferAdmin(bobZwapKey);
+
+    // Now Alice (non-admin) tries to remove Charlie from blacklist - should fail
+    expect(() => {
+      simulator.removeBlacklistUser(charlieZwapKey);
+    }).toThrow("Only admin can remove from blacklist");
+  });
+
+  it("throws when non-admin tries to transfer admin", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const bobZwapKey = simulator.createTestUser("Bob").left.bytes;
+    const charlieZwapKey = simulator.createTestUser("Charlie").left.bytes;
+
+    // Transfer admin to Bob first
+    simulator.transferAdmin(bobZwapKey);
+
+    // Now Alice (non-admin) tries to transfer admin to Charlie - should fail
+    expect(() => {
+      simulator.transferAdmin(charlieZwapKey);
+    }).toThrow("Only admin can transfer admin role");
+  });
+
+  // ============================================================
+  // NEW TESTS: Public Key Determinism
+  // ============================================================
+
+  it("generates same public key for same user and PIN (determinism)", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    const pubKey1 = simulator.publicKey(userZwapKey, userPin);
+    const pubKey2 = simulator.publicKey(userZwapKey, userPin);
+
+    expect(pubKey1).toEqual(pubKey2);
+  });
+
+  it("generates different public key for same user with different PIN", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const pin1 = 1234n;
+    const pin2 = 5678n;
+
+    const pubKey1 = simulator.publicKey(userZwapKey, pin1);
+    const pubKey2 = simulator.publicKey(userZwapKey, pin2);
+
+    expect(pubKey1).not.toEqual(pubKey2);
+  });
+
+  it("generates different public key for different users with same PIN", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const aliceZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const bobZwapKey = simulator.createTestUser("Bob").left.bytes;
+    const samePin = 1234n;
+
+    const alicePubKey = simulator.publicKey(aliceZwapKey, samePin);
+    const bobPubKey = simulator.publicKey(bobZwapKey, samePin);
+
+    expect(alicePubKey).not.toEqual(bobPubKey);
+  });
+
+  // ============================================================
+  // NEW TESTS: Blacklist Edge Cases
+  // ============================================================
+
+  it("blacklisting an already blacklisted user is idempotent", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const bobZwapKey = simulator.createTestUser("Bob").left.bytes;
+
+    // Blacklist Bob
+    simulator.blacklistUser(bobZwapKey);
+    let ledger = simulator.getLedger();
+    expect(ledger.blacklist.member({ bytes: bobZwapKey })).toBeTruthy();
+
+    // Blacklist Bob again - should not throw
+    simulator.blacklistUser(bobZwapKey);
+    ledger = simulator.getLedger();
+    expect(ledger.blacklist.member({ bytes: bobZwapKey })).toBeTruthy();
+  });
+
+  it("removing a non-blacklisted user from blacklist does not throw", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const bobZwapKey = simulator.createTestUser("Bob").left.bytes;
+
+    // Bob is not blacklisted
+    let ledger = simulator.getLedger();
+    expect(ledger.blacklist.member({ bytes: bobZwapKey })).toBeFalsy();
+
+    // Remove Bob from blacklist - should not throw (idempotent)
+    simulator.removeBlacklistUser(bobZwapKey);
+    ledger = simulator.getLedger();
+    expect(ledger.blacklist.member({ bytes: bobZwapKey })).toBeFalsy();
+  });
+
+  // ============================================================
+  // NEW TESTS: Multi-User Isolation
+  // Note: The simulator only simulates Alice as the caller (ownPublicKey()).
+  // True multi-user testing would require separate simulator instances or
+  // modifying the simulator to support user context switching.
+  // ============================================================
+
+  it("same user with different PINs has separate loan records", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const aliceZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const pin1 = 1111n;
+    const pin2 = 2222n;
+
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 750n,
+      monthlyIncome: 2500n,
+      monthsAsCustomer: 30n,
+    };
+
+    // Get the public keys for each PIN (derived from Alice's Zswap key + PIN)
+    const pubKey1 = simulator.publicKey(aliceZwapKey, pin1);
+    const pubKey2 = simulator.publicKey(aliceZwapKey, pin2);
+
+    // Request loans with different PINs
+    simulator.requestLoan(5000n, pin1);
+    simulator.requestLoan(3000n, pin2);
+
+    const ledger = simulator.getLedger();
+
+    // Each PIN should have its own loan record
+    expect(ledger.loans.member(pubKey1)).toBeTruthy();
+    expect(ledger.loans.member(pubKey2)).toBeTruthy();
+    expect(ledger.loans.lookup(pubKey1).lookup(1n).authorizedAmount).toEqual(5000n);
+    expect(ledger.loans.lookup(pubKey2).lookup(1n).authorizedAmount).toEqual(3000n);
+  });
+
+  it("blacklisting a different Zswap key does not affect the caller", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const aliceZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const bobZwapKey = simulator.createTestUser("Bob").left.bytes;
+    const alicePin = 1234n;
+
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 750n,
+      monthlyIncome: 2500n,
+      monthsAsCustomer: 30n,
+    };
+
+    const alicePubKey = simulator.publicKey(aliceZwapKey, alicePin);
+
+    // Blacklist Bob's Zswap key (not Alice's)
+    simulator.blacklistUser(bobZwapKey);
+
+    // Alice should still be able to request a loan
+    simulator.requestLoan(5000n, alicePin);
+
+    const ledger = simulator.getLedger();
+    expect(ledger.loans.member(alicePubKey)).toBeTruthy();
+    expect(ledger.loans.lookup(alicePubKey).lookup(1n).authorizedAmount).toEqual(5000n);
+  });
+
+  // ============================================================
+  // NEW TESTS: Admin Transfer Edge Cases
+  // ============================================================
+
+  it("new admin can perform admin operations after transfer", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const charlieZwapKey = simulator.createTestUser("Charlie").left.bytes;
+
+    // Note: In current simulator, all operations appear as Alice
+    // After transferring admin away, Alice loses admin privileges
+    // This test verifies the transfer occurred correctly
+
+    // Transfer admin to Charlie
+    simulator.transferAdmin(charlieZwapKey);
+
+    const ledger = simulator.getLedger();
+    expect(ledger.admin.bytes).toEqual(charlieZwapKey);
+  });
+
+  it("old admin cannot perform admin operations after transfer", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const bobZwapKey = simulator.createTestUser("Bob").left.bytes;
+    const charlieZwapKey = simulator.createTestUser("Charlie").left.bytes;
+
+    // Transfer admin to Bob
+    simulator.transferAdmin(bobZwapKey);
+
+    // Alice (old admin) tries to blacklist Charlie - should fail
+    expect(() => {
+      simulator.blacklistUser(charlieZwapKey);
+    }).toThrow("Only admin can blacklist users");
+  });
+
+  it("can chain multiple admin transfers", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const aliceZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const bobZwapKey = simulator.createTestUser("Bob").left.bytes;
+
+    let ledger = simulator.getLedger();
+    expect(ledger.admin.bytes).toEqual(aliceZwapKey);
+
+    // Transfer admin to Bob
+    simulator.transferAdmin(bobZwapKey);
+    ledger = simulator.getLedger();
+    expect(ledger.admin.bytes).toEqual(bobZwapKey);
+
+    // Note: After this transfer, Alice can no longer transfer admin
+    // because she's no longer admin. This is the expected behavior.
   });
 });

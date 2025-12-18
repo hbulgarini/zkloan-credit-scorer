@@ -15,9 +15,9 @@
 
 import {
   type CircuitContext,
-  QueryContext,
-  sampleContractAddress,
-  constructorContext
+  createConstructorContext,
+  createCircuitContext,
+  sampleContractAddress
 } from "@midnight-ntwrk/compact-runtime";
 import {
   Contract,
@@ -44,21 +44,18 @@ export class ZKLoanCreditScorerSimulator {
       currentContractState,
       currentZswapLocalState
     } = this.contract.initialState(
-      constructorContext(initialPrivateState, user.left.hex)
+      createConstructorContext(initialPrivateState, user.left.hex)
     );
-    this.circuitContext = {
-      currentPrivateState,
+    this.circuitContext = createCircuitContext(
+      sampleContractAddress(),
       currentZswapLocalState,
-      originalState: currentContractState,
-      transactionContext: new QueryContext(
-        currentContractState.data,
-        sampleContractAddress()
-      )
-    };
+      currentContractState,
+      currentPrivateState
+    );
   }
 
   public getLedger(): Ledger {
-    return ledger(this.circuitContext.transactionContext.state);
+    return ledger(this.circuitContext.currentQueryContext.state);
   }
 
   public getPrivateState(): ZKLoanCreditScorerPrivateState {
@@ -72,7 +69,7 @@ export class ZKLoanCreditScorerSimulator {
       amountRequested,
       secretPin
     ).context;
-    return ledger(this.circuitContext.transactionContext.state);
+    return ledger(this.circuitContext.currentQueryContext.state);
   }
 
   public blacklistUser(account: Uint8Array): Ledger {
@@ -81,7 +78,7 @@ export class ZKLoanCreditScorerSimulator {
       this.circuitContext,
       { bytes: account }
     ).context;
-    return ledger(this.circuitContext.transactionContext.state);
+    return ledger(this.circuitContext.currentQueryContext.state);
   }
 
   public removeBlacklistUser(account: Uint8Array): Ledger {
@@ -90,17 +87,24 @@ export class ZKLoanCreditScorerSimulator {
       this.circuitContext,
       { bytes: account }
     ).context;
-    return ledger(this.circuitContext.transactionContext.state);
+    return ledger(this.circuitContext.currentQueryContext.state);
   }
 
   public changePin(oldPin: bigint, newPin: bigint): Ledger {
-    // Update the current context to be the result of executing the circuit.
     this.circuitContext = this.contract.impureCircuits.changePin(
       this.circuitContext,
       oldPin,
       newPin
     ).context;
-    return ledger(this.circuitContext.transactionContext.state);
+    return ledger(this.circuitContext.currentQueryContext.state);
+  }
+
+  public transferAdmin(newAdmin: Uint8Array): Ledger {
+    this.circuitContext = this.contract.impureCircuits.transferAdmin(
+      this.circuitContext,
+      { bytes: newAdmin }
+    ).context;
+    return ledger(this.circuitContext.currentQueryContext.state);
   }
 
   public publicKey(sk: Uint8Array, pin: bigint): Uint8Array {
