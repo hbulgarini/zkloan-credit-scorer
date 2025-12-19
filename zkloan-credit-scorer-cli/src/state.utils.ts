@@ -1,4 +1,8 @@
-import { type ZKLoanCreditScorerPrivateState } from '../../contract';
+// This file is part of the ZKLoan Credit Scorer example.
+// Copyright (C) 2025 Midnight Foundation
+// SPDX-License-Identifier: Apache-2.0
+
+import { type ZKLoanCreditScorerPrivateState } from 'zkloan-credit-scorer-contract';
 
 export const userProfiles = [
   {

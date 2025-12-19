@@ -1,4 +1,4 @@
-// This file is part of midnightntwrk/example-counter.
+// This file is part of the ZKLoan Credit Scorer example.
 // Copyright (C) 2025 Midnight Foundation
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,13 +13,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { ZKLoanCreditScorer, type ZKLoanCreditScorerPrivateState } from '../../contract';
+import { ZKLoanCreditScorer, type ZKLoanCreditScorerPrivateState } from 'zkloan-credit-scorer-contract';
 import type { ImpureCircuitId, MidnightProviders } from '@midnight-ntwrk/midnight-js-types';
 import type { DeployedContract, FoundContract } from '@midnight-ntwrk/midnight-js-contracts';
 
 export type ZKLoanCreditScorerCircuits = ImpureCircuitId<ZKLoanCreditScorer.Contract<ZKLoanCreditScorerPrivateState>>;
 
-export const ZKLoanCreditScorerPrivateStateId = 'zKLoanCreditScorerPrivateState';
+export const ZKLoanCreditScorerPrivateStateId = 'zkLoanCreditScorerPrivateState';
 
 export type ZKLoanCreditScorerProviders = MidnightProviders<ZKLoanCreditScorerCircuits, typeof ZKLoanCreditScorerPrivateStateId, ZKLoanCreditScorerPrivateState>;
 

@@ -1,4 +1,4 @@
-// This file is part of midnightntwrk/example-counter.
+// This file is part of the ZKLoan Credit Scorer example.
 // Copyright (C) 2025 Midnight Foundation
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,17 +23,20 @@ import {
 } from 'testcontainers';
 import path from 'path';
 import * as api from '../api';
+import type { WalletContext } from '../api';
 import * as Rx from 'rxjs';
-import { nativeToken } from '@midnight-ntwrk/ledger';
+import * as ledger from '@midnight-ntwrk/ledger-v6';
 import type { Logger } from 'pino';
-import type { Wallet } from '@midnight-ntwrk/wallet-api';
-import type { Resource } from '@midnight-ntwrk/wallet';
 import { expect } from 'vitest';
 
 const GENESIS_MINT_WALLET_SEED = '0000000000000000000000000000000000000000000000000000000000000001';
 
+// Test mnemonic - DO NOT use in production
+const TEST_MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+
 export interface TestConfiguration {
   seed: string;
+  mnemonic: string;
   entrypoint: string;
   dappConfig: Config;
   psMode: string;
@@ -42,6 +45,7 @@ export interface TestConfiguration {
 
 export class LocalTestConfig implements TestConfiguration {
   seed = GENESIS_MINT_WALLET_SEED;
+  mnemonic = TEST_MNEMONIC;
   entrypoint = 'dist/standalone.js';
   psMode = 'undeployed';
   cacheFileName = '';
@@ -59,12 +63,17 @@ export function parseArgs(required: string[]): TestConfiguration {
   }
 
   let seed = '';
+  let mnemonic = TEST_MNEMONIC;
   if (required.includes('seed')) {
     if (process.env.TEST_WALLET_SEED !== undefined) {
       seed = process.env.TEST_WALLET_SEED;
     } else {
       throw new Error('TEST_WALLET_SEED environment variable is not defined.');
     }
+  }
+
+  if (process.env.TEST_WALLET_MNEMONIC !== undefined) {
+    mnemonic = process.env.TEST_WALLET_MNEMONIC;
   }
 
   let cfg: Config = new TestnetRemoteConfig();
@@ -79,6 +88,7 @@ export function parseArgs(required: string[]): TestConfiguration {
     }
     switch (env) {
       case 'testnet':
+      case 'preview':
         cfg = new TestnetRemoteConfig();
         psMode = 'testnet';
         cacheFileName = `${seed.substring(0, 7)}-${psMode}.state`;
@@ -90,6 +100,7 @@ export function parseArgs(required: string[]): TestConfiguration {
 
   return {
     seed,
+    mnemonic,
     entrypoint: entry,
     dappConfig: cfg,
     psMode,
@@ -102,7 +113,7 @@ export class TestEnvironment {
   private env: StartedDockerComposeEnvironment | undefined;
   private dockerEnv: DockerComposeEnvironment | undefined;
   private container: StartedTestContainer | undefined;
-  private wallet: (Wallet & Resource) | undefined;
+  private walletContext: WalletContext | undefined;
   private testConfig: TestConfiguration;
 
   constructor(logger: Logger) {
@@ -127,21 +138,21 @@ export class TestEnvironment {
       this.logger.info(`Using compose file: ${composeFile}`);
       this.dockerEnv = new DockerComposeEnvironment(path.resolve(currentDir, '..'), composeFile)
         .withWaitStrategy(
-          'counter-proof-server',
+          'zkloan-proof-server',
           Wait.forLogMessage('Actix runtime found; starting in Actix runtime', 1),
         )
-        .withWaitStrategy('counter-indexer', Wait.forLogMessage(/starting indexing/, 1));
+        .withWaitStrategy('zkloan-indexer', Wait.forLogMessage(/starting indexing/, 1));
       this.env = await this.dockerEnv.up();
 
       this.testConfig.dappConfig = {
         ...this.testConfig.dappConfig,
-        indexer: TestEnvironment.mapContainerPort(this.env, this.testConfig.dappConfig.indexer, 'counter-indexer'),
-        indexerWS: TestEnvironment.mapContainerPort(this.env, this.testConfig.dappConfig.indexerWS, 'counter-indexer'),
-        node: TestEnvironment.mapContainerPort(this.env, this.testConfig.dappConfig.node, 'counter-node'),
+        indexer: TestEnvironment.mapContainerPort(this.env, this.testConfig.dappConfig.indexer, 'zkloan-indexer'),
+        indexerWS: TestEnvironment.mapContainerPort(this.env, this.testConfig.dappConfig.indexerWS, 'zkloan-indexer'),
+        node: TestEnvironment.mapContainerPort(this.env, this.testConfig.dappConfig.node, 'zkloan-node'),
         proofServer: TestEnvironment.mapContainerPort(
           this.env,
           this.testConfig.dappConfig.proofServer,
-          'counter-proof-server',
+          'zkloan-proof-server',
         ),
       };
     }
@@ -168,8 +179,8 @@ export class TestEnvironment {
       .start();
 
   shutdown = async () => {
-    if (this.wallet !== undefined) {
-      await this.wallet.close();
+    if (this.walletContext !== undefined) {
+      await api.closeWallet(this.walletContext);
     }
     if (this.env !== undefined) {
       this.logger.info('Test containers closing');
@@ -181,22 +192,26 @@ export class TestEnvironment {
     }
   };
 
-  getWallet = async () => {
+  getWallet = async (): Promise<WalletContext> => {
     this.logger.info('Setting up wallet');
-    this.wallet = await api.buildWalletAndWaitForFunds(
-      this.testConfig.dappConfig,
-      this.testConfig.seed,
-      this.testConfig.cacheFileName,
-    );
-    expect(this.wallet).not.toBeNull();
-    const state = await Rx.firstValueFrom(this.wallet.state());
-    expect(state.balances[nativeToken()].valueOf()).toBeGreaterThan(BigInt(0));
-    return this.wallet;
-  };
 
-  saveWalletCache = async () => {
-    if (this.wallet !== undefined) {
-      await api.saveState(this.wallet, this.testConfig.cacheFileName);
+    // Use hex seed for standalone (genesis wallet), mnemonic for testnet
+    if (this.testConfig.dappConfig instanceof StandaloneConfig) {
+      this.walletContext = await api.buildWalletFromHexSeed(
+        this.testConfig.dappConfig,
+        this.testConfig.seed,
+      );
+    } else {
+      this.walletContext = await api.buildWalletAndWaitForFunds(
+        this.testConfig.dappConfig,
+        this.testConfig.mnemonic,
+      );
     }
+
+    expect(this.walletContext).not.toBeNull();
+    const state = await Rx.firstValueFrom(this.walletContext.wallet.state());
+    const balance = state.unshielded?.balances[ledger.nativeToken().raw] ?? 0n;
+    expect(balance).toBeGreaterThan(BigInt(0));
+    return this.walletContext;
   };
 }
