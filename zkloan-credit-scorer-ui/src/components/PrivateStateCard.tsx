@@ -1,0 +1,148 @@
+import React from 'react';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  Typography,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Box,
+  Chip,
+  Divider,
+} from '@mui/material';
+import LockIcon from '@mui/icons-material/Lock';
+import { useZKLoanContext } from '../hooks';
+
+// Predefined user profiles from state.utils.ts
+const userProfiles = [
+  { applicantId: 'user-001', creditScore: 720, monthlyIncome: 2500, monthsAsCustomer: 24 },
+  { applicantId: 'user-002', creditScore: 650, monthlyIncome: 1800, monthsAsCustomer: 11 },
+  { applicantId: 'user-003', creditScore: 580, monthlyIncome: 2200, monthsAsCustomer: 36 },
+  { applicantId: 'user-004', creditScore: 710, monthlyIncome: 1900, monthsAsCustomer: 5 },
+  { applicantId: 'user-005', creditScore: 520, monthlyIncome: 3000, monthsAsCustomer: 48 },
+  { applicantId: 'user-006', creditScore: 810, monthlyIncome: 4500, monthsAsCustomer: 60 },
+  { applicantId: 'user-007', creditScore: 639, monthlyIncome: 2100, monthsAsCustomer: 18 },
+  { applicantId: 'user-008', creditScore: 680, monthlyIncome: 1450, monthsAsCustomer: 30 },
+  { applicantId: 'user-009', creditScore: 750, monthlyIncome: 2100, monthsAsCustomer: 23 },
+  { applicantId: 'user-010', creditScore: 579, monthlyIncome: 1900, monthsAsCustomer: 12 },
+];
+
+interface TierInfo {
+  tier: string;
+  maxLoan: number;
+  color: 'success' | 'warning' | 'info' | 'error';
+}
+
+const evaluateTier = (creditScore: number, monthlyIncome: number, monthsAsCustomer: number): TierInfo => {
+  if (creditScore >= 700 && monthlyIncome >= 2000 && monthsAsCustomer >= 24) {
+    return { tier: 'Tier 1', maxLoan: 10000, color: 'success' };
+  }
+  if (creditScore >= 600 && monthlyIncome >= 1500) {
+    return { tier: 'Tier 2', maxLoan: 7000, color: 'warning' };
+  }
+  if (creditScore >= 580) {
+    return { tier: 'Tier 3', maxLoan: 3000, color: 'info' };
+  }
+  return { tier: 'Rejected', maxLoan: 0, color: 'error' };
+};
+
+export const PrivateStateCard: React.FC = () => {
+  const { privateState, setPrivateState } = useZKLoanContext();
+  const [selectedProfile, setSelectedProfile] = React.useState(0);
+
+  const currentProfile = userProfiles[selectedProfile];
+  const tierInfo = evaluateTier(
+    Number(privateState.creditScore),
+    Number(privateState.monthlyIncome),
+    Number(privateState.monthsAsCustomer),
+  );
+
+  const handleProfileChange = (index: number) => {
+    setSelectedProfile(index);
+    const profile = userProfiles[index];
+    setPrivateState({
+      creditScore: BigInt(profile.creditScore),
+      monthlyIncome: BigInt(profile.monthlyIncome),
+      monthsAsCustomer: BigInt(profile.monthsAsCustomer),
+    });
+  };
+
+  return (
+    <Card sx={{ background: '#1a1a2e', color: '#fff' }}>
+      <CardHeader
+        avatar={<LockIcon color="primary" />}
+        title="Private State"
+        subheader="This data never leaves your device"
+        subheaderTypographyProps={{ color: 'grey.500' }}
+      />
+      <CardContent>
+        <FormControl fullWidth sx={{ mb: 3 }}>
+          <InputLabel id="profile-select-label" sx={{ color: 'grey.400' }}>
+            Select Profile
+          </InputLabel>
+          <Select
+            labelId="profile-select-label"
+            value={selectedProfile}
+            label="Select Profile"
+            onChange={(e) => handleProfileChange(e.target.value as number)}
+            sx={{
+              color: '#fff',
+              '.MuiOutlinedInput-notchedOutline': { borderColor: 'grey.700' },
+              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'grey.500' },
+              '.MuiSvgIcon-root': { color: '#fff' },
+            }}
+          >
+            {userProfiles.map((profile, index) => (
+              <MenuItem key={profile.applicantId} value={index}>
+                {profile.applicantId} - Score: {profile.creditScore}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
+        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2, mb: 3 }}>
+          <Box sx={{ textAlign: 'center', p: 2, background: '#16213e', borderRadius: 2 }}>
+            <Typography variant="h4" color="primary">
+              {currentProfile.creditScore}
+            </Typography>
+            <Typography variant="body2" color="grey.400">
+              Credit Score
+            </Typography>
+          </Box>
+          <Box sx={{ textAlign: 'center', p: 2, background: '#16213e', borderRadius: 2 }}>
+            <Typography variant="h4" color="primary">
+              ${currentProfile.monthlyIncome.toLocaleString()}
+            </Typography>
+            <Typography variant="body2" color="grey.400">
+              Monthly Income
+            </Typography>
+          </Box>
+          <Box sx={{ textAlign: 'center', p: 2, background: '#16213e', borderRadius: 2 }}>
+            <Typography variant="h4" color="primary">
+              {currentProfile.monthsAsCustomer}
+            </Typography>
+            <Typography variant="body2" color="grey.400">
+              Months as Customer
+            </Typography>
+          </Box>
+        </Box>
+
+        <Divider sx={{ borderColor: 'grey.800', my: 2 }} />
+
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="body1">Expected Qualification:</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Chip label={tierInfo.tier} color={tierInfo.color} />
+            {tierInfo.maxLoan > 0 && (
+              <Typography variant="body2" color="grey.400">
+                Max: ${tierInfo.maxLoan.toLocaleString()}
+              </Typography>
+            )}
+          </Box>
+        </Box>
+      </CardContent>
+    </Card>
+  );
+};
