@@ -16,17 +16,11 @@ import {
   zip
 } from "./chunk-X4BGMPF2.js";
 import {
-  assertIsContractAddress
-} from "./chunk-MJS24RSX.js";
-import {
-  require_buffer
-} from "./chunk-NTLGP5MK.js";
-import {
-  ContractState
-} from "./chunk-U3SMOY2T.js";
-import {
   require_browser_ponyfill
-} from "./chunk-IAB4OA3G.js";
+} from "./chunk-ZUV5NWEK.js";
+import {
+  assertIsContractAddress
+} from "./chunk-NY6JJKLJ.js";
 import {
   FailEntirely,
   FailFallible,
@@ -38,7 +32,13 @@ import {
 import {
   Transaction,
   ZswapChainState
-} from "./chunk-OLWGKVHT.js";
+} from "./chunk-TB2A6I4S.js";
+import {
+  ContractState
+} from "./chunk-VJNAFTFR.js";
+import {
+  require_buffer
+} from "./chunk-D7WYEG3T.js";
 import {
   __commonJS,
   __esm,
@@ -130,7 +130,7 @@ var require_globals = __commonJS({
     }) || maybe2(function() {
       return self;
     }) || maybe2(function() {
-      return global;
+      return globalThis;
     }) || maybe2(function() {
       return maybe2.constructor("return this")();
     });
@@ -13887,7 +13887,7 @@ var init_slot = __esm({
     maybe(() => globalThis) || // Fall back to global, which works in Node.js and may be converted by some
     // bundlers to the appropriate identifier (window, self, ...) depending on the
     // bundling target. https://github.com/endojs/endo/issues/576#issuecomment-1178515224
-    maybe(() => global) || // Otherwise, use a dummy host that's local to this module. We used to fall
+    maybe(() => globalThis) || // Otherwise, use a dummy host that's local to this module. We used to fall
     // back to using the Array constructor as a namespace, but that was flagged in
     // https://github.com/benjamn/wryware/issues/347, and can be avoided.
     /* @__PURE__ */ Object.create(null);
@@ -14935,8 +14935,8 @@ var init_es = __esm({
       root = self;
     } else if (typeof window !== "undefined") {
       root = window;
-    } else if (typeof global !== "undefined") {
-      root = global;
+    } else if (typeof globalThis !== "undefined") {
+      root = globalThis;
     } else if (typeof module !== "undefined") {
       root = module;
     } else {
@@ -15061,7 +15061,7 @@ var require_utilities = __commonJS({
     var isReactNative = globals.maybe(function() {
       return navigator.product;
     }) == "ReactNative";
-    var canUseWeakMap = typeof WeakMap === "function" && !(isReactNative && !global.HermesInternal);
+    var canUseWeakMap = typeof WeakMap === "function" && !(isReactNative && !globalThis.HermesInternal);
     var canUseWeakSet = typeof WeakSet === "function";
     var canUseSymbol = typeof Symbol === "function" && typeof Symbol.for === "function";
     var canUseAsyncIteratorSymbol = canUseSymbol && Symbol.asyncIterator;
@@ -24059,9 +24059,9 @@ function createClient(options) {
     ws2 = webSocketImpl;
   } else if (typeof WebSocket !== "undefined") {
     ws2 = WebSocket;
-  } else if (typeof global !== "undefined") {
-    ws2 = global.WebSocket || // @ts-expect-error: Support more browsers
-    global.MozWebSocket;
+  } else if (typeof globalThis !== "undefined") {
+    ws2 = globalThis.WebSocket || // @ts-expect-error: Support more browsers
+    globalThis.MozWebSocket;
   } else if (typeof window !== "undefined") {
     ws2 = window.WebSocket || // @ts-expect-error: Support more browsers
     window.MozWebSocket;
@@ -24512,8 +24512,8 @@ if (typeof WebSocket !== "undefined") {
   ws = WebSocket;
 } else if (typeof MozWebSocket !== "undefined") {
   ws = MozWebSocket;
-} else if (typeof global !== "undefined") {
-  ws = global.WebSocket || global.MozWebSocket;
+} else if (typeof globalThis !== "undefined") {
+  ws = globalThis.WebSocket || globalThis.MozWebSocket;
 } else if (typeof window !== "undefined") {
   ws = window.WebSocket || window.MozWebSocket;
 } else if (typeof self !== "undefined") {

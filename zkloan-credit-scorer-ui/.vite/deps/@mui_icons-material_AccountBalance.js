@@ -2,7 +2,7 @@
 import "./chunk-GUAQH6CP.js";
 import {
   createSvgIcon
-} from "./chunk-FLEVCPJL.js";
+} from "./chunk-6L7BB3DH.js";
 import {
   require_jsx_runtime
 } from "./chunk-NSGMPQUM.js";

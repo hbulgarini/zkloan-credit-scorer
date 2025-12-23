@@ -277,7 +277,7 @@ import {
   upgradeFromTransient,
   valueToBigInt,
   verifySignature
-} from "./chunk-OLWGKVHT.js";
+} from "./chunk-TB2A6I4S.js";
 import "./chunk-V4OQ3NZ2.js";
 export {
   AuthorizedClaim,

@@ -22,7 +22,7 @@ import {
   type Configuration,
   type ProvingProvider,
 } from '@midnight-ntwrk/dapp-connector-api';
-import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
+// levelPrivateStateProvider is dynamically imported in initializeProviders to avoid Buffer polyfill timing issues
 import { FetchZkConfigProvider } from '@midnight-ntwrk/midnight-js-fetch-zk-config-provider';
 import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
 import { type BalancedProvingRecipe } from '@midnight-ntwrk/midnight-js-types';
@@ -87,6 +87,20 @@ export type ZKLoanProviderProps = PropsWithChildren<{
 const COMPATIBLE_CONNECTOR_API_VERSION = '4.x';
 const NETWORK_ID = import.meta.env.VITE_NETWORK_ID || 'TestNet';
 const STORAGE_PASSWORD = import.meta.env.VITE_STORAGE_PASSWORD || 'zkloan-credit-scorer-ui-default-password';
+
+// In development, use Vite proxy to avoid CORS issues with the indexer
+const getProxiedIndexerUrls = (indexerUri: string, indexerWsUri: string) => {
+  if (import.meta.env.DEV) {
+    // Use Vite proxy in development
+    const origin = window.location.origin;
+    return {
+      indexerUri: `${origin}/proxy-indexer/api/v3/graphql`,
+      indexerWsUri: `${origin.replace('http', 'ws')}/proxy-indexer-ws/api/v3/graphql`,
+    };
+  }
+  // In production, use the wallet-provided URLs directly
+  return { indexerUri, indexerWsUri };
+};
 
 export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger, children }) => {
   const [privateState, setPrivateState] = useState<ZKLoanCreditScorerPrivateState>({
@@ -228,6 +242,9 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
       throw new Error('Wallet does not support getProvingProvider and no proverServerUri configured');
     }
 
+    // Dynamic import to avoid Buffer polyfill timing issues with readable-stream
+    const { levelPrivateStateProvider } = await import('@midnight-ntwrk/midnight-js-level-private-state-provider');
+
     return {
       privateStateProvider: levelPrivateStateProvider({
         privateStateStoreName: 'zkloan-credit-scorer-private-state',
@@ -235,7 +252,11 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
       }),
       zkConfigProvider,
       proofProvider,
-      publicDataProvider: indexerPublicDataProvider(config.indexerUri, config.indexerWsUri),
+      publicDataProvider: (() => {
+        const { indexerUri, indexerWsUri } = getProxiedIndexerUrls(config.indexerUri, config.indexerWsUri);
+        logger.info({ indexerUri, indexerWsUri }, 'Using indexer URLs');
+        return indexerPublicDataProvider(indexerUri, indexerWsUri);
+      })(),
       walletProvider: {
         coinPublicKey: addresses.shieldedCoinPublicKey,
         encryptionPublicKey: addresses.shieldedEncryptionPublicKey,
@@ -243,70 +264,70 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
         getEncryptionPublicKey: () => addresses.shieldedEncryptionPublicKey,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         async balanceTx(tx: any, _newCoins?: any[], _ttl?: Date): Promise<BalancedProvingRecipe> {
-          // v4.x workflow: prove → balance → submit
-          // MidnightJS workflow: balance → prove → bind → submit
-          //
-          // To make this work, we need to:
-          // 1. Prove the transaction here (before MidnightJS does it)
-          // 2. Balance it with the wallet (while still in PreBinding format)
-          // 3. Return the balanced tx as NothingToProve
-          // 4. MidnightJS will call .bind() but it's already bound, so no-op
-
-          try {
-            logger.info('Proving transaction...');
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const provenTx = await proofProvider.proveTx(tx) as any;
-
-            // Erase signatures - balanceUnsealedTransaction expects SignatureErased
-            // httpClientProofProvider returns SignatureEnabled, so we need to convert
-            const unsignedTx = provenTx.eraseSignatures;
-
-            // Serialize the proven, unsigned transaction
-            const serializedBytes = unsignedTx.serialize() as Uint8Array;
-            const headerPreview = new TextDecoder().decode(serializedBytes.slice(0, 120));
-            logger.info({ headerPreview }, 'Transaction proven and signatures erased, balancing with wallet...');
-
-            const serializedTx = toHex(serializedBytes);
-
-            // Balance with wallet - tx is now SignatureErased + PreBinding (embedded-fr)
-            const balanced = await connectedWallet.balanceUnsealedTransaction(serializedTx);
-            logger.info('Transaction balanced by wallet!');
-
-            // Deserialize the balanced transaction (now fully bound and ready)
-            const { Transaction } = await import('@midnight-ntwrk/ledger-v6');
-            const balancedBytes = new Uint8Array(balanced.tx.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16)));
-            const balancedTx = Transaction.deserialize('signature', 'proof', 'binding', balancedBytes);
-
-            // Return as NothingToProve - MidnightJS will skip proving
-            // When it calls .bind(), it's already bound so should be no-op
-            return {
-              type: 'NothingToProve',
-              transaction: balancedTx,
-            } as unknown as BalancedProvingRecipe;
-          } catch (error) {
-            logger.error({ error }, 'Failed to prove and balance transaction');
-            throw error;
-          }
+          // Let MidnightJS prove the transaction via wallet's proving provider
+          // We'll handle balancing in submitTx using balanceUnsealedTransaction
+          logger.info('balanceTx: returning TransactionToProve');
+          return {
+            type: 'TransactionToProve',
+            transaction: tx,
+          } as unknown as BalancedProvingRecipe;
         },
       },
       midnightProvider: {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         async submitTx(tx: any): Promise<any> {
-          // Transaction should already be balanced by the wallet in balanceTx
-          const serializedBytes = tx.serialize();
-          const headerPreview = new TextDecoder().decode(serializedBytes.slice(0, 120));
-          const serializedTx = toHex(serializedBytes);
+          // Transaction is proven but UNSEALED (PreBinding) - needs balancing
+          // Use balanceUnsealedTransaction for v4.x API
+          logger.info({
+            txType: typeof tx,
+            txKeys: tx ? Object.keys(tx) : 'null',
+            hasSerialize: typeof tx?.serialize === 'function'
+          }, 'submitTx called with transaction');
 
-          logger.info({ headerPreview }, 'Submitting transaction...');
+          // Serialize the transaction to hex
+          let serializedTx: string;
+          if (typeof tx?.serialize === 'function') {
+            const serializedBytes = tx.serialize();
+            if (!serializedBytes) {
+              throw new Error('tx.serialize() returned undefined');
+            }
+            serializedTx = toHex(serializedBytes);
+          } else if (typeof tx === 'string') {
+            serializedTx = tx;
+          } else if (tx instanceof Uint8Array) {
+            serializedTx = toHex(tx);
+          } else {
+            logger.error({ tx }, 'Unknown transaction format');
+            throw new Error(`Unknown transaction format: ${typeof tx}`);
+          }
 
-          // Submit directly - tx should already be balanced
+          logger.info({ txLength: serializedTx.length }, 'Transaction ready, balancing with wallet...');
+
+          // For unsealed (proven but not bound) transactions, use balanceUnsealedTransaction
+          // This is the correct method for v4.x dapp-connector-api
           try {
-            await connectedWallet.submitTransaction(serializedTx);
+            logger.info('Calling balanceUnsealedTransaction...');
+            const balanced = await connectedWallet.balanceUnsealedTransaction(serializedTx);
+            logger.info('Transaction balanced, submitting...');
+            await connectedWallet.submitTransaction(balanced.tx);
             logger.info('Transaction submitted successfully!');
             return tx;
-          } catch (submitError) {
-            logger.error({ error: submitError, headerPreview }, 'Direct submission failed');
-            throw submitError;
+          } catch (unsealedError) {
+            logger.warn({ error: unsealedError }, 'balanceUnsealedTransaction failed, trying sealed...');
+
+            // Maybe the transaction is already sealed? Try balanceSealedTransaction
+            try {
+              const balanced = await connectedWallet.balanceSealedTransaction(serializedTx);
+              await connectedWallet.submitTransaction(balanced.tx);
+              logger.info('Transaction submitted via balanceSealedTransaction!');
+              return tx;
+            } catch (sealedError) {
+              logger.error({
+                unsealedError,
+                sealedError,
+              }, 'All submission approaches failed');
+              throw unsealedError; // Throw the more informative error
+            }
           }
         },
       },
@@ -349,11 +370,14 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
     try {
       deploymentSubject.next({ status: 'in-progress' });
 
+      logger.info('Initializing providers for join...');
       const providers = await initializeProviders();
+      logger.info('Providers initialized successfully');
 
-      logger.info(`Joining contract at address: ${contractAddress}`);
+      logger.info({ contractAddress, addressType: typeof contractAddress }, 'Joining contract...');
       const zkLoanContract = new ZKLoanCreditScorer.Contract(witnesses);
 
+      logger.info('Calling findDeployedContract...');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const joined = await findDeployedContract(providers as any, {
         contractAddress,
@@ -362,15 +386,21 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
         initialPrivateState: privateState,
       });
 
+      logger.info({ joined: !!joined, deployTxData: !!joined?.deployTxData }, 'findDeployedContract returned');
       setContract(joined);
-      logger.info(`Joined contract at address: ${joined.deployTxData.public.contractAddress}`);
+
+      const resolvedAddress = joined?.deployTxData?.public?.contractAddress;
+      logger.info({
+        resolvedAddress,
+        resolvedAddressType: typeof resolvedAddress,
+      }, 'Resolved contract address');
 
       deploymentSubject.next({
         status: 'deployed',
-        contractAddress: joined.deployTxData.public.contractAddress,
+        contractAddress: resolvedAddress ?? contractAddress,
       });
     } catch (error) {
-      logger.error(error, 'Failed to join contract');
+      logger.error({ error, message: error instanceof Error ? error.message : String(error) }, 'Failed to join contract');
       deploymentSubject.next({
         status: 'failed',
         error: error instanceof Error ? error : new Error(String(error)),

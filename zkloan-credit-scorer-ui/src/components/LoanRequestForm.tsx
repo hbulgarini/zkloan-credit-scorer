@@ -14,12 +14,12 @@ import {
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import LinkIcon from '@mui/icons-material/Link';
-import AddIcon from '@mui/icons-material/Add';
 import { useZKLoanContext } from '../hooks';
 import { type ZKLoanDeployment } from '../contexts';
 
 export const LoanRequestForm: React.FC = () => {
-  const { deployment$, deploy, join, requestLoan } = useZKLoanContext();
+  // Note: `deploy` is available but disabled in UI due to Lace wallet v4.x compatibility
+  const { deployment$, join, requestLoan } = useZKLoanContext();
 
   const [deployment, setDeployment] = useState<ZKLoanDeployment>({ status: 'idle' });
   const [contractAddress, setContractAddress] = useState('');
@@ -33,10 +33,9 @@ export const LoanRequestForm: React.FC = () => {
     return () => subscription.unsubscribe();
   }, [deployment$]);
 
-  const handleDeploy = () => {
-    setResult(null);
-    deploy();
-  };
+  // Note: Deploy functionality is disabled in UI due to Lace wallet v4.x compatibility issues.
+  // Use CLI to deploy contracts, then join them via this UI.
+  // const handleDeploy = () => { setResult(null); deploy(); };
 
   const handleJoin = () => {
     if (!contractAddress.trim()) {
@@ -103,8 +102,10 @@ export const LoanRequestForm: React.FC = () => {
         avatar={<SendIcon color="primary" />}
         title="Loan Request"
         subheader={
-          isDeployed
-            ? `Contract: ${deployment.contractAddress.slice(0, 10)}...${deployment.contractAddress.slice(-8)}`
+          isDeployed && deployment.contractAddress
+            ? `Contract: ${typeof deployment.contractAddress === 'string'
+                ? `${deployment.contractAddress.slice(0, 10)}...${deployment.contractAddress.slice(-8)}`
+                : `${Array.from(deployment.contractAddress as Uint8Array).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 10)}...`}`
             : 'Deploy or join a contract to apply'
         }
         subheaderTypographyProps={{ color: 'grey.500' }}
@@ -113,24 +114,15 @@ export const LoanRequestForm: React.FC = () => {
       <CardContent>
         {!isDeployed && (
           <Box sx={{ mb: 3 }}>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <Typography variant="body2">
+                <strong>Note:</strong> Contract deployment via dApp is currently not supported with Lace wallet v4.x due to transaction compatibility issues.
+                Please deploy using CLI and then join the contract here.
+              </Typography>
+            </Alert>
+
             <Typography variant="body2" color="grey.400" sx={{ mb: 2 }}>
-              First, deploy a new contract or join an existing one:
-            </Typography>
-
-            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={handleDeploy}
-                disabled={isLoading}
-                fullWidth
-              >
-                Deploy New
-              </Button>
-            </Box>
-
-            <Typography variant="body2" color="grey.500" sx={{ textAlign: 'center', my: 1 }}>
-              - or -
+              Join an existing contract or deploy via CLI:
             </Typography>
 
             <Box sx={{ display: 'flex', gap: 1 }}>

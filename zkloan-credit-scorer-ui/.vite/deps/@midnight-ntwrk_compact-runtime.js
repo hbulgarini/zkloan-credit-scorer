@@ -109,7 +109,7 @@ import {
   valueToBigInt,
   verifySignature,
   versionString
-} from "./chunk-U3SMOY2T.js";
+} from "./chunk-VJNAFTFR.js";
 import "./chunk-V4OQ3NZ2.js";
 export {
   Bytes32Descriptor,

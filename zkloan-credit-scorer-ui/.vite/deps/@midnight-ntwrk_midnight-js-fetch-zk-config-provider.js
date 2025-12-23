@@ -1,6 +1,6 @@
 import {
   require_browser_ponyfill
-} from "./chunk-IAB4OA3G.js";
+} from "./chunk-ZUV5NWEK.js";
 import {
   InvalidProtocolSchemeError,
   ZKConfigProvider,
@@ -8,7 +8,7 @@ import {
   createVerifierKey,
   createZKIR
 } from "./chunk-J7ZCMGN6.js";
-import "./chunk-OLWGKVHT.js";
+import "./chunk-TB2A6I4S.js";
 import {
   __toESM
 } from "./chunk-V4OQ3NZ2.js";
