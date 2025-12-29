@@ -14,12 +14,12 @@ import {
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import LinkIcon from '@mui/icons-material/Link';
+import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import { useZKLoanContext } from '../hooks';
 import { type ZKLoanDeployment } from '../contexts';
 
 export const LoanRequestForm: React.FC = () => {
-  // Note: `deploy` is available but disabled in UI due to Lace wallet v4.x compatibility
-  const { deployment$, join, requestLoan } = useZKLoanContext();
+  const { deployment$, deploy, join, requestLoan, flowMessage } = useZKLoanContext();
 
   const [deployment, setDeployment] = useState<ZKLoanDeployment>({ status: 'idle' });
   const [contractAddress, setContractAddress] = useState('');
@@ -33,9 +33,10 @@ export const LoanRequestForm: React.FC = () => {
     return () => subscription.unsubscribe();
   }, [deployment$]);
 
-  // Note: Deploy functionality is disabled in UI due to Lace wallet v4.x compatibility issues.
-  // Use CLI to deploy contracts, then join them via this UI.
-  // const handleDeploy = () => { setResult(null); deploy(); };
+  const handleDeploy = () => {
+    setResult(null);
+    deploy();
+  };
 
   const handleJoin = () => {
     if (!contractAddress.trim()) {
@@ -92,10 +93,15 @@ export const LoanRequestForm: React.FC = () => {
   return (
     <Card sx={{ background: '#1a1a2e', color: '#fff' }}>
       <Backdrop
-        sx={{ position: 'absolute', color: '#fff', zIndex: 10, borderRadius: 2 }}
+        sx={{ position: 'absolute', color: '#fff', zIndex: 10, borderRadius: 2, flexDirection: 'column', gap: 2 }}
         open={isLoading || isSubmitting}
       >
         <CircularProgress color="primary" />
+        {flowMessage && (
+          <Typography variant="body2" sx={{ mt: 2, textAlign: 'center', px: 2 }}>
+            {flowMessage}
+          </Typography>
+        )}
       </Backdrop>
 
       <CardHeader
@@ -114,18 +120,24 @@ export const LoanRequestForm: React.FC = () => {
       <CardContent>
         {!isDeployed && (
           <Box sx={{ mb: 3 }}>
-            <Alert severity="warning" sx={{ mb: 2 }}>
-              <Typography variant="body2">
-                <strong>Limitation:</strong> Lace wallet v4.x does not yet implement <code>getProvingProvider</code>, which is required for browser-based ZK proof generation.
-                Contract interactions require proving with <code>embedded-fr</code> binding, but the remote proof server produces <code>pedersen-schnorr</code> binding.
-              </Typography>
-              <Typography variant="body2" sx={{ mt: 1 }}>
-                <strong>Workaround:</strong> Use CLI to deploy and call contracts. The CLI uses a local proof server with compatible binding.
-              </Typography>
-            </Alert>
-
             <Typography variant="body2" color="grey.400" sx={{ mb: 2 }}>
-              Join an existing contract or deploy via CLI:
+              Deploy a new contract or join an existing one:
+            </Typography>
+
+            <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+              <Button
+                variant="contained"
+                startIcon={<AccountBalanceIcon />}
+                onClick={handleDeploy}
+                disabled={isLoading}
+                fullWidth
+              >
+                Deploy New Contract
+              </Button>
+            </Box>
+
+            <Typography variant="body2" color="grey.500" sx={{ mb: 1, textAlign: 'center' }}>
+              - or -
             </Typography>
 
             <Box sx={{ display: 'flex', gap: 1 }}>
@@ -158,6 +170,12 @@ export const LoanRequestForm: React.FC = () => {
         {hasFailed && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {deployment.error.message}
+          </Alert>
+        )}
+
+        {result && (
+          <Alert severity={result.success ? 'success' : 'error'} sx={{ mb: 2 }}>
+            {result.message}
           </Alert>
         )}
 
@@ -198,12 +216,6 @@ export const LoanRequestForm: React.FC = () => {
               }}
               inputProps={{ maxLength: 6 }}
             />
-
-            {result && (
-              <Alert severity={result.success ? 'success' : 'error'} sx={{ mb: 2 }}>
-                {result.message}
-              </Alert>
-            )}
           </Box>
         )}
       </CardContent>

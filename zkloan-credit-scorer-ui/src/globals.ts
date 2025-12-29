@@ -1,23 +1,26 @@
+// Polyfill for Node.js Buffer
 import { Buffer } from 'buffer';
 
-// Polyfill Buffer for browser usage - MUST be first
-// Also set on window for compatibility with some libraries
-(globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
-(window as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
-
-// Ensure Buffer.prototype methods are available
-// Some bundled modules check for these before Buffer is fully initialized
-if (typeof Buffer.prototype.slice !== 'function') {
-  Buffer.prototype.slice = function(start?: number, end?: number) {
-    return Buffer.from(Uint8Array.prototype.slice.call(this, start, end));
+// Ensure process.env is available globally
+if (typeof globalThis.process === 'undefined') {
+  // @ts-expect-error - Adding process to globalThis for Node.js compatibility
+  globalThis.process = {
+    env: {
+      NODE_ENV: import.meta.env.MODE || 'production',
+    },
+    version: '', // Some libraries might check for process.version
+    cwd: () => '/', // Default current working directory
   };
 }
 
-// Map Vite's MODE to process.env.NODE_ENV for third-party libraries
-const processPolyfill = {
-  env: {
-    NODE_ENV: import.meta.env.MODE,
-  },
-};
-(globalThis as unknown as { process: typeof processPolyfill }).process = processPolyfill;
-(window as unknown as { process: typeof processPolyfill }).process = processPolyfill;
+// Ensure Buffer is available globally
+if (typeof globalThis.Buffer === 'undefined') {
+  globalThis.Buffer = Buffer;
+}
+
+// For environments that expect process.browser
+// @ts-expect-error - Adding process.browser for compatibility
+if (typeof process !== 'undefined' && !process.browser) {
+  // @ts-expect-error - Adding process.browser
+  process.browser = true;
+}

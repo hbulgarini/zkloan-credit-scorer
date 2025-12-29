@@ -1,5 +1,6 @@
-import React, { type PropsWithChildren, createContext, useState, useCallback } from 'react';
-import { type ContractAddress } from '@midnight-ntwrk/compact-runtime';
+import React, { type PropsWithChildren, createContext, useState, useCallback, useMemo } from 'react';
+import { type ContractAddress, fromHex, toHex } from '@midnight-ntwrk/compact-runtime';
+import * as ledger from '@midnight-ntwrk/ledger-v6';
 import {
   BehaviorSubject,
   type Observable,
@@ -8,7 +9,6 @@ import {
   firstValueFrom,
   interval,
   map,
-  of,
   take,
   tap,
   throwError,
@@ -20,28 +20,18 @@ import {
   type InitialAPI,
   type ConnectedAPI,
   type Configuration,
-  type ProvingProvider,
 } from '@midnight-ntwrk/dapp-connector-api';
-// levelPrivateStateProvider is dynamically imported in initializeProviders to avoid Buffer polyfill timing issues
+import {
+  type BalancedProvingRecipe,
+  type MidnightProvider,
+  type WalletProvider,
+} from '@midnight-ntwrk/midnight-js-types';
 import { FetchZkConfigProvider } from '@midnight-ntwrk/midnight-js-fetch-zk-config-provider';
+import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
-import { type BalancedProvingRecipe } from '@midnight-ntwrk/midnight-js-types';
-import { CostModel } from '@midnight-ntwrk/ledger-v6';
-import semver from 'semver';
-import { getNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
+import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { deployContract, findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
 import { ZKLoanCreditScorer, witnesses, type ZKLoanCreditScorerPrivateState } from 'zkloan-credit-scorer-contract';
-
-/**
- * IMPORTANT: This dApp uses Lace wallet's proving provider for all ZK proofs.
- * DO NOT use httpClientProofProvider or local proof servers - they produce
- * incompatible transaction formats (pedersen-schnorr binding instead of embedded-fr).
- * The wallet's getProvingProvider() must be used for v4.x dapp-connector-api compatibility.
- */
-
-// Helper function to convert Uint8Array to hex string
-const toHex = (bytes: Uint8Array): string =>
-  Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 
 export type ZKLoanCircuitKeys = 'requestLoan' | 'changePin' | 'blacklistUser' | 'removeBlacklistUser' | 'transferAdmin';
 
@@ -76,6 +66,7 @@ export interface ZKLoanAPIProvider {
   readonly isConnecting: boolean;
   readonly walletAddress: string | null;
   readonly connect: () => Promise<void>;
+  readonly flowMessage: string | undefined;
 }
 
 export const ZKLoanContext = createContext<ZKLoanAPIProvider | undefined>(undefined);
@@ -84,23 +75,42 @@ export type ZKLoanProviderProps = PropsWithChildren<{
   logger: Logger;
 }>;
 
-const COMPATIBLE_CONNECTOR_API_VERSION = '4.x';
 const NETWORK_ID = import.meta.env.VITE_NETWORK_ID || 'TestNet';
-const STORAGE_PASSWORD = import.meta.env.VITE_STORAGE_PASSWORD || 'zkloan-credit-scorer-ui-default-password';
 
-// In development, use Vite proxy to avoid CORS issues with the indexer
-const getProxiedIndexerUrls = (indexerUri: string, indexerWsUri: string) => {
-  if (import.meta.env.DEV) {
-    // Use Vite proxy in development
-    const origin = window.location.origin;
-    return {
-      indexerUri: `${origin}/proxy-indexer/api/v3/graphql`,
-      indexerWsUri: `${origin.replace('http', 'ws')}/proxy-indexer-ws/api/v3/graphql`,
-    };
-  }
-  // In production, use the wallet-provided URLs directly
-  return { indexerUri, indexerWsUri };
-};
+// In-memory private state provider (simpler than level for browser)
+function inMemoryPrivateStateProvider<K extends string, V>() {
+  const states = new Map<K, V>();
+  const signingKeys: Record<string, unknown> = {};
+
+  return {
+    async get(key: K): Promise<V | null> {
+      return states.get(key) ?? null;
+    },
+    async set(key: K, value: V): Promise<void> {
+      states.set(key, value);
+    },
+    async remove(key: K): Promise<void> {
+      states.delete(key);
+    },
+    async clear(): Promise<void> {
+      states.clear();
+    },
+    async setSigningKey(contractAddress: string, signingKey: unknown): Promise<void> {
+      signingKeys[contractAddress] = signingKey;
+    },
+    async getSigningKey(contractAddress: string): Promise<unknown | null> {
+      return signingKeys[contractAddress] ?? null;
+    },
+    async removeSigningKey(contractAddress: string): Promise<void> {
+      delete signingKeys[contractAddress];
+    },
+    async clearSigningKeys(): Promise<void> {
+      Object.keys(signingKeys).forEach((key) => {
+        delete signingKeys[key];
+      });
+    },
+  };
+}
 
 export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger, children }) => {
   const [privateState, setPrivateState] = useState<ZKLoanCreditScorerPrivateState>({
@@ -114,13 +124,13 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [flowMessage, setFlowMessage] = useState<string | undefined>(undefined);
 
   const connectToWallet = useCallback(async (): Promise<{ wallet: ConnectedAPI; config: Configuration }> => {
     const result = await firstValueFrom(
       interval(100).pipe(
         map(() => {
           // In v4.x, wallets are under window.midnight[key] where key is a UUID
-          // Find the first available wallet (usually mnLace)
           const midnight = (window as unknown as { midnight?: Record<string, InitialAPI> }).midnight;
           if (!midnight) return undefined;
           // Try mnLace first, then any other wallet
@@ -130,19 +140,6 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
           logger.trace(initialAPI, 'Check for wallet connector API');
         }),
         filter((initialAPI): initialAPI is InitialAPI => !!initialAPI),
-        concatMap((initialAPI) =>
-          semver.satisfies(initialAPI.apiVersion, COMPATIBLE_CONNECTOR_API_VERSION)
-            ? of(initialAPI)
-            : throwError(() => {
-                logger.error(
-                  { expected: COMPATIBLE_CONNECTOR_API_VERSION, actual: initialAPI.apiVersion },
-                  'Incompatible version of wallet connector API',
-                );
-                return new Error(
-                  `Incompatible Lace wallet version. Require '${COMPATIBLE_CONNECTOR_API_VERSION}', got '${initialAPI.apiVersion}'.`,
-                );
-              }),
-        ),
         tap((initialAPI) => {
           logger.info({ name: initialAPI.name, version: initialAPI.apiVersion }, 'Compatible wallet connector API found. Connecting.');
         }),
@@ -156,7 +153,6 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
             }),
         }),
         concatMap(async (initialAPI) => {
-          // New v4.x API: connect with network ID
           logger.info({ networkId: NETWORK_ID }, 'Attempting to connect with network ID');
           const connectedAPI = await initialAPI.connect(NETWORK_ID);
           return connectedAPI;
@@ -165,14 +161,20 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
           logger.error({ error, requestedNetwork: NETWORK_ID }, 'Unable to connect to wallet');
           const errorMessage = error instanceof Error ? error.message : String(error);
           if (errorMessage.includes('Network ID mismatch')) {
-            return throwError(() => new Error(`Network mismatch: dApp requests "${NETWORK_ID}" but wallet is on different network. Change wallet network to "${NETWORK_ID}" in Lace settings.`));
+            return throwError(() => new Error(`Network mismatch: dApp requests "${NETWORK_ID}" but wallet is on different network.`));
           }
           return throwError(() => new Error('Application is not authorized. Please approve in Lace wallet.'));
         }),
         concatMap(async (connectedAPI) => {
-          // Get configuration (replaces serviceUriConfig)
           const config = await connectedAPI.getConfiguration();
-          logger.info({ config }, 'Connected to wallet connector API and retrieved service configuration');
+          const status = await connectedAPI.getConnectionStatus();
+
+          // Set network ID globally
+          if (status.status === 'connected') {
+            setNetworkId(status.networkId);
+          }
+
+          logger.info({ config }, 'Connected to wallet connector API');
           return { wallet: connectedAPI, config };
         }),
       ),
@@ -180,181 +182,125 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
     return result as { wallet: ConnectedAPI; config: Configuration };
   }, [logger]);
 
-  const initializeProviders = useCallback(async () => {
-    const { wallet: connectedWallet, config } = await connectToWallet();
+  const privateStateProvider = useMemo(
+    () => inMemoryPrivateStateProvider<string, ZKLoanCreditScorerPrivateState>(),
+    []
+  );
 
-    // Get wallet addresses (replaces state())
-    const addresses = await connectedWallet.getShieldedAddresses();
+  const initializeProviders = useCallback(async () => {
+    const { wallet, config } = await connectToWallet();
+
+    const addresses = await wallet.getShieldedAddresses();
     const zkConfigPath = window.location.origin;
 
     setIsConnected(true);
     setWalletAddress(addresses.shieldedAddress || null);
 
-    logger.info(`Connected to wallet with network ID: ${getNetworkId()}`);
     logger.info({
-      availableMethods: Object.keys(connectedWallet).filter(k => typeof (connectedWallet as Record<string, unknown>)[k] === 'function'),
-      hasGetProvingProvider: typeof connectedWallet.getProvingProvider === 'function',
-      config
-    }, 'Wallet connection details');
+      indexerUri: config.indexerUri,
+      proverServerUri: config.proverServerUri,
+    }, 'Service configuration');
 
-    // Get proving provider from wallet
-    const zkConfigProvider = new FetchZkConfigProvider<ZKLoanCircuitKeys>(zkConfigPath, fetch.bind(window));
-
-    // v4.x API REQUIRES wallet's getProvingProvider for correct transaction binding format
-    // httpClientProofProvider produces 'pedersen-schnorr' binding which is incompatible with Lace wallet
-    // Wallet's getProvingProvider produces 'embedded-fr' binding which is required
-
-    logger.info({
-      hasGetProvingProvider: typeof connectedWallet.getProvingProvider === 'function',
-      connectedWalletKeys: Object.keys(connectedWallet),
-      connectedWalletType: typeof connectedWallet,
-    }, 'Checking wallet capabilities');
-
-    if (typeof connectedWallet.getProvingProvider !== 'function') {
-      const availableMethods = Object.keys(connectedWallet).filter(k => typeof (connectedWallet as Record<string, unknown>)[k] === 'function').join(', ');
-      const errorMsg = `Lace wallet v4.x does not yet implement getProvingProvider. This method is required for browser-based ZK proof generation with the correct transaction binding format (embedded-fr). Without it, the dApp cannot create valid contract transactions. Workaround: Use CLI to deploy and call contracts. Available wallet methods: ${availableMethods}`;
-      logger.error({ availableMethods }, errorMsg);
-      throw new Error(errorMsg);
+    if (!config.proverServerUri) {
+      throw new Error('Proof server URI not available from wallet configuration');
     }
 
-    logger.info('Getting proving provider from wallet...');
-    const walletProvingProvider: ProvingProvider = await connectedWallet.getProvingProvider({
-      getZKIR: async (loc) => {
-        logger.info({ loc }, 'Fetching ZKIR');
-        const res = await fetch(`${zkConfigPath}/zkir/${loc}.zkir`);
-        if (!res.ok) throw new Error(`Failed to fetch ZKIR for ${loc}: ${res.status}`);
-        return new Uint8Array(await res.arrayBuffer());
-      },
-      getProverKey: async (loc) => {
-        logger.info({ loc }, 'Fetching prover key');
-        const res = await fetch(`${zkConfigPath}/keys/${loc}.prover`);
-        if (!res.ok) throw new Error(`Failed to fetch prover key for ${loc}: ${res.status}`);
-        return new Uint8Array(await res.arrayBuffer());
-      },
-      getVerifierKey: async (loc) => {
-        logger.info({ loc }, 'Fetching verifier key');
-        const res = await fetch(`${zkConfigPath}/keys/${loc}.verifier`);
-        if (!res.ok) throw new Error(`Failed to fetch verifier key for ${loc}: ${res.status}`);
-        return new Uint8Array(await res.arrayBuffer());
-      },
-    });
-    logger.info('Got proving provider from wallet');
+    // ZK config provider - fetches prover/verifier keys
+    const zkConfigProvider = new FetchZkConfigProvider<ZKLoanCircuitKeys>(zkConfigPath, fetch.bind(window));
 
-    // Create a MidnightJS-compatible ProofProvider that wraps the wallet's ProvingProvider
-    const proofProvider = {
-      async proveTx(unprovenTx: unknown): Promise<unknown> {
-        logger.info({
-          txType: typeof unprovenTx,
-          txKeys: unprovenTx ? Object.keys(unprovenTx as object).slice(0, 10) : 'null',
-          hasProve: typeof (unprovenTx as { prove?: unknown })?.prove === 'function',
-        }, 'Proving transaction using wallet proving provider...');
-        const costModel = CostModel.initialCostModel();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const provenTx = await (unprovenTx as any).prove(walletProvingProvider, costModel);
-        logger.info('Transaction proven successfully with embedded-fr binding');
-        return provenTx;
-      }
-    };
+    // Proof provider - uses remote proof server (this is the key difference!)
+    const proofProvider = httpClientProofProvider<ZKLoanCircuitKeys>(config.proverServerUri);
 
-    // Dynamic import to avoid Buffer polyfill timing issues with readable-stream
-    const { levelPrivateStateProvider } = await import('@midnight-ntwrk/midnight-js-level-private-state-provider');
+    // Public data provider - indexer for blockchain queries
+    const publicDataProvider = indexerPublicDataProvider(config.indexerUri, config.indexerWsUri);
 
-    return {
-      privateStateProvider: levelPrivateStateProvider({
-        privateStateStoreName: 'zkloan-credit-scorer-private-state',
-        privateStoragePasswordProvider: () => STORAGE_PASSWORD,
-      }),
-      zkConfigProvider,
-      proofProvider,
-      publicDataProvider: (() => {
-        const { indexerUri, indexerWsUri } = getProxiedIndexerUrls(config.indexerUri, config.indexerWsUri);
-        logger.info({ indexerUri, indexerWsUri }, 'Using indexer URLs');
-        return indexerPublicDataProvider(indexerUri, indexerWsUri);
-      })(),
-      walletProvider: {
-        coinPublicKey: addresses.shieldedCoinPublicKey,
-        encryptionPublicKey: addresses.shieldedEncryptionPublicKey,
-        getCoinPublicKey: () => addresses.shieldedCoinPublicKey,
-        getEncryptionPublicKey: () => addresses.shieldedEncryptionPublicKey,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        async balanceTx(tx: any, _newCoins?: any[], _ttl?: Date): Promise<BalancedProvingRecipe> {
-          // Let MidnightJS prove the transaction via wallet's proving provider
-          // We'll handle balancing in submitTx using balanceUnsealedTransaction
-          logger.info('balanceTx: returning TransactionToProve');
+    // Wallet provider - handles transaction balancing via Lace wallet
+    const walletProvider: WalletProvider = {
+      getCoinPublicKey(): ledger.CoinPublicKey {
+        return addresses.shieldedCoinPublicKey as unknown as ledger.CoinPublicKey;
+      },
+      getEncryptionPublicKey(): ledger.EncPublicKey {
+        return addresses.shieldedEncryptionPublicKey as unknown as ledger.EncPublicKey;
+      },
+      async balanceTx(
+        tx: ledger.UnprovenTransaction,
+        _newCoins?: unknown[],
+        _ttl?: Date
+      ): Promise<BalancedProvingRecipe> {
+        try {
+          setFlowMessage('Signing the transaction with Midnight Lace wallet...');
+          logger.info('Balancing transaction via wallet');
+
+          // Serialize the unproven transaction
+          const serializedTx = toHex(tx.serialize());
+
+          // Call wallet to balance the unsealed transaction
+          const received = await wallet.balanceUnsealedTransaction(serializedTx);
+
+          // Deserialize the balanced transaction
+          const transaction = ledger.Transaction.deserialize<
+            ledger.SignatureEnabled,
+            ledger.PreProof,
+            ledger.PreBinding
+          >(
+            'signature',
+            'pre-proof',
+            'pre-binding',
+            fromHex(received.tx)
+          );
+
+          setFlowMessage(undefined);
+
+          // Return as TransactionToProve - will be proven by proofProvider
           return {
             type: 'TransactionToProve',
-            transaction: tx,
-          } as unknown as BalancedProvingRecipe;
-        },
-      },
-      midnightProvider: {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        async submitTx(tx: any): Promise<any> {
-          // Transaction is proven but UNSEALED (PreBinding) - needs balancing
-          // Use balanceUnsealedTransaction for v4.x API
-          logger.info({
-            txType: typeof tx,
-            txKeys: tx ? Object.keys(tx) : 'null',
-            hasSerialize: typeof tx?.serialize === 'function'
-          }, 'submitTx called with transaction');
-
-          // Serialize the transaction to hex
-          let serializedTx: string;
-          if (typeof tx?.serialize === 'function') {
-            const serializedBytes = tx.serialize();
-            if (!serializedBytes) {
-              throw new Error('tx.serialize() returned undefined');
-            }
-            serializedTx = toHex(serializedBytes);
-          } else if (typeof tx === 'string') {
-            serializedTx = tx;
-          } else if (tx instanceof Uint8Array) {
-            serializedTx = toHex(tx);
-          } else {
-            logger.error({ tx }, 'Unknown transaction format');
-            throw new Error(`Unknown transaction format: ${typeof tx}`);
-          }
-
-          logger.info({ txLength: serializedTx.length }, 'Transaction ready, balancing with wallet...');
-
-          // For unsealed (proven but not bound) transactions, use balanceUnsealedTransaction
-          // This is the correct method for v4.x dapp-connector-api
-          try {
-            logger.info('Calling balanceUnsealedTransaction...');
-            const balanced = await connectedWallet.balanceUnsealedTransaction(serializedTx);
-            logger.info('Transaction balanced, submitting...');
-            await connectedWallet.submitTransaction(balanced.tx);
-            logger.info('Transaction submitted successfully!');
-            return tx;
-          } catch (unsealedError) {
-            logger.warn({ error: unsealedError }, 'balanceUnsealedTransaction failed, trying sealed...');
-
-            // Maybe the transaction is already sealed? Try balanceSealedTransaction
-            try {
-              const balanced = await connectedWallet.balanceSealedTransaction(serializedTx);
-              await connectedWallet.submitTransaction(balanced.tx);
-              logger.info('Transaction submitted via balanceSealedTransaction!');
-              return tx;
-            } catch (sealedError) {
-              logger.error({
-                unsealedError,
-                sealedError,
-              }, 'All submission approaches failed');
-              throw unsealedError; // Throw the more informative error
-            }
-          }
-        },
+            transaction: transaction,
+          };
+        } catch (e) {
+          setFlowMessage(undefined);
+          logger.error({ error: e }, 'Error balancing transaction via wallet');
+          throw e;
+        }
       },
     };
-  }, [connectToWallet, logger]);
+
+    // Midnight provider - handles transaction submission
+    const midnightProvider: MidnightProvider = {
+      async submitTx(tx: ledger.FinalizedTransaction): Promise<ledger.TransactionId> {
+        setFlowMessage('Submitting transaction...');
+        logger.info('Submitting transaction via wallet');
+
+        await wallet.submitTransaction(toHex(tx.serialize()));
+
+        const txIdentifiers = tx.identifiers();
+        const txId = txIdentifiers[0];
+
+        setFlowMessage(undefined);
+        logger.info({ txId }, 'Transaction submitted successfully');
+        return txId;
+      },
+    };
+
+    return {
+      privateStateProvider,
+      zkConfigProvider,
+      proofProvider,
+      publicDataProvider,
+      walletProvider,
+      midnightProvider,
+    };
+  }, [connectToWallet, logger, privateStateProvider]);
 
   const deployNewContract = useCallback(async () => {
     try {
       deploymentSubject.next({ status: 'in-progress' });
+      setFlowMessage('Initializing providers...');
 
       const providers = await initializeProviders();
 
+      setFlowMessage('Deploying ZKLoan Credit Scorer contract...');
       logger.info('Deploying ZKLoan Credit Scorer contract...');
+
       const zkLoanContract = new ZKLoanCreditScorer.Contract(witnesses);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -365,6 +311,7 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
       });
 
       setContract(deployed);
+      setFlowMessage(undefined);
       logger.info(`Deployed contract at address: ${deployed.deployTxData.public.contractAddress}`);
 
       deploymentSubject.next({
@@ -372,6 +319,7 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
         contractAddress: deployed.deployTxData.public.contractAddress,
       });
     } catch (error) {
+      setFlowMessage(undefined);
       logger.error(error, 'Failed to deploy contract');
       deploymentSubject.next({
         status: 'failed',
@@ -383,15 +331,17 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
   const joinExistingContract = useCallback(async (contractAddress: ContractAddress) => {
     try {
       deploymentSubject.next({ status: 'in-progress' });
+      setFlowMessage('Initializing providers...');
 
       logger.info('Initializing providers for join...');
       const providers = await initializeProviders();
       logger.info('Providers initialized successfully');
 
-      logger.info({ contractAddress, addressType: typeof contractAddress }, 'Joining contract...');
+      setFlowMessage('Joining contract...');
+      logger.info({ contractAddress }, 'Joining contract...');
+
       const zkLoanContract = new ZKLoanCreditScorer.Contract(witnesses);
 
-      logger.info('Calling findDeployedContract...');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const joined = await findDeployedContract(providers as any, {
         contractAddress,
@@ -400,20 +350,18 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
         initialPrivateState: privateState,
       });
 
-      logger.info({ joined: !!joined, deployTxData: !!joined?.deployTxData }, 'findDeployedContract returned');
+      logger.info({ joined: !!joined }, 'findDeployedContract returned');
       setContract(joined);
+      setFlowMessage(undefined);
 
       const resolvedAddress = joined?.deployTxData?.public?.contractAddress;
-      logger.info({
-        resolvedAddress,
-        resolvedAddressType: typeof resolvedAddress,
-      }, 'Resolved contract address');
 
       deploymentSubject.next({
         status: 'deployed',
         contractAddress: resolvedAddress ?? contractAddress,
       });
     } catch (error) {
+      setFlowMessage(undefined);
       logger.error({ error, message: error instanceof Error ? error.message : String(error) }, 'Failed to join contract');
       deploymentSubject.next({
         status: 'failed',
@@ -427,8 +375,12 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
       throw new Error('Contract not deployed. Please deploy or join a contract first.');
     }
 
+    setFlowMessage('Requesting loan...');
     logger.info(`Requesting loan for amount: ${amount} with PIN...`);
+
     const finalizedTxData = await contract.callTx.requestLoan(amount, pin);
+
+    setFlowMessage(undefined);
     logger.info(`Transaction ${finalizedTxData.public.txId} added in block ${finalizedTxData.public.blockHeight}`);
   }, [contract, logger]);
 
@@ -440,12 +392,12 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
 
     setIsConnecting(true);
     try {
-      const { wallet: connectedWallet } = await connectToWallet();
-      const addresses = await connectedWallet.getShieldedAddresses();
+      const { wallet } = await connectToWallet();
+      const addresses = await wallet.getShieldedAddresses();
 
       setIsConnected(true);
       setWalletAddress(addresses.shieldedAddress || null);
-      logger.info('Successfully reconnected to wallet');
+      logger.info('Successfully connected to wallet');
     } catch (error) {
       logger.error(error, 'Failed to connect to wallet');
       setIsConnected(false);
@@ -467,6 +419,7 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
     isConnecting,
     walletAddress,
     connect,
+    flowMessage,
   };
 
   return <ZKLoanContext.Provider value={apiProvider}>{children}</ZKLoanContext.Provider>;
