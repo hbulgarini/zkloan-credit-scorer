@@ -43,6 +43,7 @@
     "@midnight-ntwrk/wallet-sdk-hd": "^3.0.0-beta.7",
     "@midnight-ntwrk/wallet-sdk-shielded": "^1.0.0-beta.11",
     "@midnight-ntwrk/wallet-sdk-unshielded-wallet": "^1.0.0-beta.13",
+    "@playwright/test": "^1.57.0",
     "@scure/bip39": "^2.0.1",
     "dotenv": "^17.2.3",
     "pino": "^10.1.0",

@@ -200,47 +200,61 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
     // Get proving provider from wallet
     const zkConfigProvider = new FetchZkConfigProvider<ZKLoanCircuitKeys>(zkConfigPath, fetch.bind(window));
 
-    // Try to get the wallet's proving provider first (preferred for v4.x compatibility)
-    // Fall back to httpClientProofProvider if not available
-    let proofProvider;
+    // v4.x API REQUIRES wallet's getProvingProvider for correct transaction binding format
+    // httpClientProofProvider produces 'pedersen-schnorr' binding which is incompatible with Lace wallet
+    // Wallet's getProvingProvider produces 'embedded-fr' binding which is required
 
-    if (typeof connectedWallet.getProvingProvider === 'function') {
-      logger.info('Getting proving provider from wallet...');
-      const walletProvingProvider: ProvingProvider = await connectedWallet.getProvingProvider({
-        getZKIR: async (loc) => {
-          const res = await fetch(`${zkConfigPath}/zkir/${loc}.zkir`);
-          return new Uint8Array(await res.arrayBuffer());
-        },
-        getProverKey: async (loc) => {
-          const res = await fetch(`${zkConfigPath}/keys/${loc}.prover`);
-          return new Uint8Array(await res.arrayBuffer());
-        },
-        getVerifierKey: async (loc) => {
-          const res = await fetch(`${zkConfigPath}/keys/${loc}.verifier`);
-          return new Uint8Array(await res.arrayBuffer());
-        },
-      });
-      logger.info('Got proving provider from wallet');
+    logger.info({
+      hasGetProvingProvider: typeof connectedWallet.getProvingProvider === 'function',
+      connectedWalletKeys: Object.keys(connectedWallet),
+      connectedWalletType: typeof connectedWallet,
+    }, 'Checking wallet capabilities');
 
-      // Create a MidnightJS-compatible ProofProvider that wraps the wallet's ProvingProvider
-      proofProvider = {
-        async proveTx(unprovenTx: unknown): Promise<unknown> {
-          logger.info('Proving transaction using wallet proving provider...');
-          const costModel = CostModel.initialCostModel();
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const provenTx = await (unprovenTx as any).prove(walletProvingProvider, costModel);
-          logger.info('Transaction proven successfully');
-          return provenTx;
-        }
-      };
-    } else if (config.proverServerUri) {
-      // Fallback to httpClientProofProvider using wallet's configured prover server
-      logger.info({ proverServerUri: config.proverServerUri }, 'Wallet does not have getProvingProvider, using httpClientProofProvider with wallet prover URI');
-      const { httpClientProofProvider } = await import('@midnight-ntwrk/midnight-js-http-client-proof-provider');
-      proofProvider = httpClientProofProvider(config.proverServerUri);
-    } else {
-      throw new Error('Wallet does not support getProvingProvider and no proverServerUri configured');
+    if (typeof connectedWallet.getProvingProvider !== 'function') {
+      const availableMethods = Object.keys(connectedWallet).filter(k => typeof (connectedWallet as Record<string, unknown>)[k] === 'function').join(', ');
+      const errorMsg = `Lace wallet v4.x does not yet implement getProvingProvider. This method is required for browser-based ZK proof generation with the correct transaction binding format (embedded-fr). Without it, the dApp cannot create valid contract transactions. Workaround: Use CLI to deploy and call contracts. Available wallet methods: ${availableMethods}`;
+      logger.error({ availableMethods }, errorMsg);
+      throw new Error(errorMsg);
     }
+
+    logger.info('Getting proving provider from wallet...');
+    const walletProvingProvider: ProvingProvider = await connectedWallet.getProvingProvider({
+      getZKIR: async (loc) => {
+        logger.info({ loc }, 'Fetching ZKIR');
+        const res = await fetch(`${zkConfigPath}/zkir/${loc}.zkir`);
+        if (!res.ok) throw new Error(`Failed to fetch ZKIR for ${loc}: ${res.status}`);
+        return new Uint8Array(await res.arrayBuffer());
+      },
+      getProverKey: async (loc) => {
+        logger.info({ loc }, 'Fetching prover key');
+        const res = await fetch(`${zkConfigPath}/keys/${loc}.prover`);
+        if (!res.ok) throw new Error(`Failed to fetch prover key for ${loc}: ${res.status}`);
+        return new Uint8Array(await res.arrayBuffer());
+      },
+      getVerifierKey: async (loc) => {
+        logger.info({ loc }, 'Fetching verifier key');
+        const res = await fetch(`${zkConfigPath}/keys/${loc}.verifier`);
+        if (!res.ok) throw new Error(`Failed to fetch verifier key for ${loc}: ${res.status}`);
+        return new Uint8Array(await res.arrayBuffer());
+      },
+    });
+    logger.info('Got proving provider from wallet');
+
+    // Create a MidnightJS-compatible ProofProvider that wraps the wallet's ProvingProvider
+    const proofProvider = {
+      async proveTx(unprovenTx: unknown): Promise<unknown> {
+        logger.info({
+          txType: typeof unprovenTx,
+          txKeys: unprovenTx ? Object.keys(unprovenTx as object).slice(0, 10) : 'null',
+          hasProve: typeof (unprovenTx as { prove?: unknown })?.prove === 'function',
+        }, 'Proving transaction using wallet proving provider...');
+        const costModel = CostModel.initialCostModel();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const provenTx = await (unprovenTx as any).prove(walletProvingProvider, costModel);
+        logger.info('Transaction proven successfully with embedded-fr binding');
+        return provenTx;
+      }
+    };
 
     // Dynamic import to avoid Buffer polyfill timing issues with readable-stream
     const { levelPrivateStateProvider } = await import('@midnight-ntwrk/midnight-js-level-private-state-provider');

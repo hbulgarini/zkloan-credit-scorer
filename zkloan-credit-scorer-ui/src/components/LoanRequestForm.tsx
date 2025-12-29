@@ -114,10 +114,13 @@ export const LoanRequestForm: React.FC = () => {
       <CardContent>
         {!isDeployed && (
           <Box sx={{ mb: 3 }}>
-            <Alert severity="info" sx={{ mb: 2 }}>
+            <Alert severity="warning" sx={{ mb: 2 }}>
               <Typography variant="body2">
-                <strong>Note:</strong> Contract deployment via dApp is currently not supported with Lace wallet v4.x due to transaction compatibility issues.
-                Please deploy using CLI and then join the contract here.
+                <strong>Limitation:</strong> Lace wallet v4.x does not yet implement <code>getProvingProvider</code>, which is required for browser-based ZK proof generation.
+                Contract interactions require proving with <code>embedded-fr</code> binding, but the remote proof server produces <code>pedersen-schnorr</code> binding.
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                <strong>Workaround:</strong> Use CLI to deploy and call contracts. The CLI uses a local proof server with compatible binding.
               </Typography>
             </Alert>
 
