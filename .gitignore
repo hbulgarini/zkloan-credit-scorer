@@ -61,3 +61,8 @@ jspm_packages/
 managed/
 
 ./midnight-docs
+
+# Local development folders
+.playwright-mcp/
+bboard-ui/
+updated_starter_0.1/
