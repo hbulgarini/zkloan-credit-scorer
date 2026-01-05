@@ -77,7 +77,7 @@ describe("ZKLoanCreditScorer smart contract", () => {
     expect(loan.authorizedAmount).toEqual(5000n); // Gets the requested amount
   });
 
-  it("approves a Tier 3 loan", () => {
+  it("proposes a Tier 3 loan when amount exceeds limit", () => {
     const simulator = new ZKLoanCreditScorerSimulator();
     const userZwapKey = simulator.createTestUser("Alice").left.bytes;
     const userPin = 1234n;
@@ -89,9 +89,9 @@ describe("ZKLoanCreditScorer smart contract", () => {
     };
     const userPubKey = simulator.publicKey(userZwapKey, userPin);
     simulator.requestLoan(10000n, userPin);
-    
+
     const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
-    expect(loan.status).toEqual(0);
+    expect(loan.status).toEqual(2); // Proposed (amount exceeds tier limit)
     expect(loan.authorizedAmount).toEqual(3000n); // Capped at Tier 3 max
   });
 
@@ -424,7 +424,7 @@ it("migrates a small number of loans (1 batch) and cleans up", () => {
   // NEW TESTS: Tier Boundary Edge Cases
   // ============================================================
 
-  it("approves exactly at Tier 1 boundary (score=700, income=2000, tenure=24)", () => {
+  it("approves exactly at Tier 1 boundary when amount within limit (score=700, income=2000, tenure=24)", () => {
     const simulator = new ZKLoanCreditScorerSimulator();
     const userZwapKey = simulator.createTestUser("Alice").left.bytes;
     const userPin = 1234n;
@@ -437,14 +437,14 @@ it("migrates a small number of loans (1 batch) and cleans up", () => {
     };
 
     const userPubKey = simulator.publicKey(userZwapKey, userPin);
-    simulator.requestLoan(15000n, userPin);
+    simulator.requestLoan(10000n, userPin); // Request exactly at limit
 
     const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
-    expect(loan.status).toEqual(0); // Approved
+    expect(loan.status).toEqual(0); // Approved (amount within limit)
     expect(loan.authorizedAmount).toEqual(10000n); // Tier 1 max
   });
 
-  it("falls to Tier 2 when just below Tier 1 threshold (score=699)", () => {
+  it("proposes Tier 2 when just below Tier 1 threshold (score=699)", () => {
     const simulator = new ZKLoanCreditScorerSimulator();
     const userZwapKey = simulator.createTestUser("Alice").left.bytes;
     const userPin = 1234n;
@@ -460,11 +460,11 @@ it("migrates a small number of loans (1 batch) and cleans up", () => {
     simulator.requestLoan(15000n, userPin);
 
     const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
-    expect(loan.status).toEqual(0); // Approved
+    expect(loan.status).toEqual(2); // Proposed (amount exceeds tier limit)
     expect(loan.authorizedAmount).toEqual(7000n); // Falls to Tier 2 max
   });
 
-  it("approves exactly at Tier 2 boundary (score=600, income=1500)", () => {
+  it("proposes at Tier 2 boundary when amount exceeds limit (score=600, income=1500)", () => {
     const simulator = new ZKLoanCreditScorerSimulator();
     const userZwapKey = simulator.createTestUser("Alice").left.bytes;
     const userPin = 1234n;
@@ -480,11 +480,11 @@ it("migrates a small number of loans (1 batch) and cleans up", () => {
     simulator.requestLoan(10000n, userPin);
 
     const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
-    expect(loan.status).toEqual(0); // Approved
+    expect(loan.status).toEqual(2); // Proposed (amount exceeds tier limit)
     expect(loan.authorizedAmount).toEqual(7000n); // Tier 2 max
   });
 
-  it("falls to Tier 3 when just below Tier 2 threshold (score=599)", () => {
+  it("proposes Tier 3 when just below Tier 2 threshold (score=599)", () => {
     const simulator = new ZKLoanCreditScorerSimulator();
     const userZwapKey = simulator.createTestUser("Alice").left.bytes;
     const userPin = 1234n;
@@ -500,11 +500,11 @@ it("migrates a small number of loans (1 batch) and cleans up", () => {
     simulator.requestLoan(10000n, userPin);
 
     const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
-    expect(loan.status).toEqual(0); // Approved
+    expect(loan.status).toEqual(2); // Proposed (amount exceeds tier limit)
     expect(loan.authorizedAmount).toEqual(3000n); // Falls to Tier 3 max
   });
 
-  it("approves exactly at Tier 3 boundary (score=580)", () => {
+  it("proposes at Tier 3 boundary when amount exceeds limit (score=580)", () => {
     const simulator = new ZKLoanCreditScorerSimulator();
     const userZwapKey = simulator.createTestUser("Alice").left.bytes;
     const userPin = 1234n;
@@ -520,7 +520,7 @@ it("migrates a small number of loans (1 batch) and cleans up", () => {
     simulator.requestLoan(5000n, userPin);
 
     const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
-    expect(loan.status).toEqual(0); // Approved
+    expect(loan.status).toEqual(2); // Proposed (amount exceeds tier limit)
     expect(loan.authorizedAmount).toEqual(3000n); // Tier 3 max
   });
 
@@ -544,7 +544,7 @@ it("migrates a small number of loans (1 batch) and cleans up", () => {
     expect(loan.authorizedAmount).toEqual(0n);
   });
 
-  it("falls to Tier 2 when Tier 1 income requirement not met", () => {
+  it("proposes Tier 2 when Tier 1 income requirement not met", () => {
     const simulator = new ZKLoanCreditScorerSimulator();
     const userZwapKey = simulator.createTestUser("Alice").left.bytes;
     const userPin = 1234n;
@@ -560,11 +560,11 @@ it("migrates a small number of loans (1 batch) and cleans up", () => {
     simulator.requestLoan(15000n, userPin);
 
     const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
-    expect(loan.status).toEqual(0); // Approved
+    expect(loan.status).toEqual(2); // Proposed (amount exceeds tier limit)
     expect(loan.authorizedAmount).toEqual(7000n); // Falls to Tier 2
   });
 
-  it("falls to Tier 2 when Tier 1 tenure requirement not met", () => {
+  it("proposes Tier 2 when Tier 1 tenure requirement not met", () => {
     const simulator = new ZKLoanCreditScorerSimulator();
     const userZwapKey = simulator.createTestUser("Alice").left.bytes;
     const userPin = 1234n;
@@ -580,7 +580,7 @@ it("migrates a small number of loans (1 batch) and cleans up", () => {
     simulator.requestLoan(15000n, userPin);
 
     const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
-    expect(loan.status).toEqual(0); // Approved
+    expect(loan.status).toEqual(2); // Proposed (amount exceeds tier limit)
     expect(loan.authorizedAmount).toEqual(7000n); // Falls to Tier 2
   });
 
@@ -814,5 +814,328 @@ it("migrates a small number of loans (1 batch) and cleans up", () => {
 
     // Note: After this transfer, Alice can no longer transfer admin
     // because she's no longer admin. This is the expected behavior.
+  });
+
+  // ============================================================
+  // NEW TESTS: Proposed/NotAccepted Loan Flow
+  // ============================================================
+
+  it("creates Proposed loan when requested amount exceeds tier limit", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    // Tier 1 user (max 10000)
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 750n,
+      monthlyIncome: 2500n,
+      monthsAsCustomer: 30n,
+    };
+
+    const userPubKey = simulator.publicKey(userZwapKey, userPin);
+
+    // Request more than Tier 1 max
+    simulator.requestLoan(15000n, userPin);
+
+    const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
+    expect(loan.status).toEqual(2); // Proposed (index 2 in enum)
+    expect(loan.authorizedAmount).toEqual(10000n); // Capped at Tier 1 max
+  });
+
+  it("creates Approved loan when requested amount is within tier limit", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    // Tier 1 user (max 10000)
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 750n,
+      monthlyIncome: 2500n,
+      monthsAsCustomer: 30n,
+    };
+
+    const userPubKey = simulator.publicKey(userZwapKey, userPin);
+
+    // Request exactly at Tier 1 max
+    simulator.requestLoan(10000n, userPin);
+
+    const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
+    expect(loan.status).toEqual(0); // Approved
+    expect(loan.authorizedAmount).toEqual(10000n);
+  });
+
+  it("creates Approved loan when requested amount is less than tier limit", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    // Tier 1 user (max 10000)
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 750n,
+      monthlyIncome: 2500n,
+      monthsAsCustomer: 30n,
+    };
+
+    const userPubKey = simulator.publicKey(userZwapKey, userPin);
+
+    // Request less than Tier 1 max
+    simulator.requestLoan(5000n, userPin);
+
+    const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
+    expect(loan.status).toEqual(0); // Approved
+    expect(loan.authorizedAmount).toEqual(5000n);
+  });
+
+  it("respondToLoan with accept=true changes Proposed to Approved", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 750n,
+      monthlyIncome: 2500n,
+      monthsAsCustomer: 30n,
+    };
+
+    const userPubKey = simulator.publicKey(userZwapKey, userPin);
+
+    // Create a Proposed loan
+    simulator.requestLoan(15000n, userPin);
+    let loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
+    expect(loan.status).toEqual(2); // Proposed
+
+    // Accept the proposal
+    simulator.respondToLoan(1n, userPin, true);
+
+    loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
+    expect(loan.status).toEqual(0); // Approved
+    expect(loan.authorizedAmount).toEqual(10000n); // Amount preserved
+  });
+
+  it("respondToLoan with accept=false changes Proposed to NotAccepted with zero amount", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 750n,
+      monthlyIncome: 2500n,
+      monthsAsCustomer: 30n,
+    };
+
+    const userPubKey = simulator.publicKey(userZwapKey, userPin);
+
+    // Create a Proposed loan
+    simulator.requestLoan(15000n, userPin);
+    let loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
+    expect(loan.status).toEqual(2); // Proposed
+
+    // Reject the proposal
+    simulator.respondToLoan(1n, userPin, false);
+
+    loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
+    expect(loan.status).toEqual(3); // NotAccepted (index 3 in enum)
+    expect(loan.authorizedAmount).toEqual(0n); // Amount set to zero
+  });
+
+  it("throws when respondToLoan is called on non-Proposed loan", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 750n,
+      monthlyIncome: 2500n,
+      monthsAsCustomer: 30n,
+    };
+
+    const userPubKey = simulator.publicKey(userZwapKey, userPin);
+
+    // Create an Approved loan (amount within limit)
+    simulator.requestLoan(5000n, userPin);
+    const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
+    expect(loan.status).toEqual(0); // Approved
+
+    // Try to respond to an Approved loan - should fail
+    expect(() => {
+      simulator.respondToLoan(1n, userPin, true);
+    }).toThrow("Loan is not in Proposed status");
+  });
+
+  it("throws when respondToLoan is called on already accepted loan", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 750n,
+      monthlyIncome: 2500n,
+      monthsAsCustomer: 30n,
+    };
+
+    const userPubKey = simulator.publicKey(userZwapKey, userPin);
+
+    // Create and accept a Proposed loan
+    simulator.requestLoan(15000n, userPin);
+    simulator.respondToLoan(1n, userPin, true);
+
+    // Try to respond again - should fail
+    expect(() => {
+      simulator.respondToLoan(1n, userPin, false);
+    }).toThrow("Loan is not in Proposed status");
+  });
+
+  it("throws when respondToLoan is called with non-existent loan ID", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 750n,
+      monthlyIncome: 2500n,
+      monthsAsCustomer: 30n,
+    };
+
+    // Create a loan first so user exists in the system
+    simulator.requestLoan(15000n, userPin);
+
+    // Try to respond to non-existent loan
+    expect(() => {
+      simulator.respondToLoan(999n, userPin, true);
+    }).toThrow("Loan not found");
+  });
+
+  it("throws when respondToLoan is called by user with no loans", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userPin = 1234n;
+
+    // Don't create any loans - user doesn't exist in loans map
+
+    expect(() => {
+      simulator.respondToLoan(1n, userPin, true);
+    }).toThrow("No loans found for this user");
+  });
+
+  it("throws when blacklisted user tries to respondToLoan", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 750n,
+      monthlyIncome: 2500n,
+      monthsAsCustomer: 30n,
+    };
+
+    // Create a Proposed loan
+    simulator.requestLoan(15000n, userPin);
+
+    // Blacklist the user
+    simulator.blacklistUser(userZwapKey);
+
+    // Try to respond - should fail
+    expect(() => {
+      simulator.respondToLoan(1n, userPin, true);
+    }).toThrow("User is blacklisted");
+  });
+
+  it("creates Proposed loan for Tier 2 user exceeding limit", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    // Tier 2 user (max 7000)
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 650n,
+      monthlyIncome: 1600n,
+      monthsAsCustomer: 10n,
+    };
+
+    const userPubKey = simulator.publicKey(userZwapKey, userPin);
+
+    // Request more than Tier 2 max
+    simulator.requestLoan(10000n, userPin);
+
+    const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
+    expect(loan.status).toEqual(2); // Proposed
+    expect(loan.authorizedAmount).toEqual(7000n); // Capped at Tier 2 max
+  });
+
+  it("creates Proposed loan for Tier 3 user exceeding limit", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    // Tier 3 user (max 3000)
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 590n,
+      monthlyIncome: 1000n,
+      monthsAsCustomer: 1n,
+    };
+
+    const userPubKey = simulator.publicKey(userZwapKey, userPin);
+
+    // Request more than Tier 3 max
+    simulator.requestLoan(5000n, userPin);
+
+    const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
+    expect(loan.status).toEqual(2); // Proposed
+    expect(loan.authorizedAmount).toEqual(3000n); // Capped at Tier 3 max
+  });
+
+  it("rejected applicant still gets Rejected status (not Proposed)", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    // User below minimum eligibility
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 500n,
+      monthlyIncome: 1000n,
+      monthsAsCustomer: 1n,
+    };
+
+    const userPubKey = simulator.publicKey(userZwapKey, userPin);
+    simulator.requestLoan(1000n, userPin);
+
+    const loan = simulator.getLedger().loans.lookup(userPubKey).lookup(1n);
+    expect(loan.status).toEqual(1); // Rejected (not Proposed)
+    expect(loan.authorizedAmount).toEqual(0n);
+  });
+
+  it("can have multiple Proposed loans and respond to each independently", () => {
+    const simulator = new ZKLoanCreditScorerSimulator();
+    const userZwapKey = simulator.createTestUser("Alice").left.bytes;
+    const userPin = 1234n;
+
+    simulator.circuitContext.currentPrivateState = {
+      creditScore: 750n,
+      monthlyIncome: 2500n,
+      monthsAsCustomer: 30n,
+    };
+
+    const userPubKey = simulator.publicKey(userZwapKey, userPin);
+
+    // Create multiple Proposed loans
+    simulator.requestLoan(15000n, userPin); // Loan 1 - Proposed
+    simulator.requestLoan(12000n, userPin); // Loan 2 - Proposed
+    simulator.requestLoan(5000n, userPin);  // Loan 3 - Approved (within limit)
+
+    let ledger = simulator.getLedger();
+    expect(ledger.loans.lookup(userPubKey).lookup(1n).status).toEqual(2); // Proposed
+    expect(ledger.loans.lookup(userPubKey).lookup(2n).status).toEqual(2); // Proposed
+    expect(ledger.loans.lookup(userPubKey).lookup(3n).status).toEqual(0); // Approved
+
+    // Accept loan 1
+    simulator.respondToLoan(1n, userPin, true);
+    // Reject loan 2
+    simulator.respondToLoan(2n, userPin, false);
+
+    ledger = simulator.getLedger();
+    expect(ledger.loans.lookup(userPubKey).lookup(1n).status).toEqual(0); // Approved
+    expect(ledger.loans.lookup(userPubKey).lookup(1n).authorizedAmount).toEqual(10000n);
+    expect(ledger.loans.lookup(userPubKey).lookup(2n).status).toEqual(3); // NotAccepted
+    expect(ledger.loans.lookup(userPubKey).lookup(2n).authorizedAmount).toEqual(0n);
+    expect(ledger.loans.lookup(userPubKey).lookup(3n).status).toEqual(0); // Still Approved
   });
 });

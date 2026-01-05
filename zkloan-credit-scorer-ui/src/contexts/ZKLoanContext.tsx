@@ -1,4 +1,5 @@
 import React, { type PropsWithChildren, createContext, useState, useCallback, useMemo } from 'react';
+import { Buffer } from 'buffer';
 import { type ContractAddress, fromHex, toHex } from '@midnight-ntwrk/compact-runtime';
 import * as ledger from '@midnight-ntwrk/ledger-v6';
 import {
@@ -35,6 +36,18 @@ import { ZKLoanCreditScorer, witnesses, type ZKLoanCreditScorerPrivateState } fr
 
 export type ZKLoanCircuitKeys = 'requestLoan' | 'changePin' | 'blacklistUser' | 'removeBlacklistUser' | 'transferAdmin';
 
+// Re-export loan types for components
+export type LoanApplication = {
+  authorizedAmount: bigint;
+  status: 'Approved' | 'Rejected';
+};
+
+export type UserLoan = {
+  loanId: bigint;
+  authorizedAmount: bigint;
+  status: 'Approved' | 'Rejected';
+};
+
 export interface IdleDeployment {
   readonly status: 'idle';
 }
@@ -62,9 +75,11 @@ export interface ZKLoanAPIProvider {
   readonly deploy: () => void;
   readonly join: (contractAddress: ContractAddress) => void;
   readonly requestLoan: (amount: bigint, pin: bigint) => Promise<void>;
+  readonly getMyLoans: (pin: bigint) => Promise<UserLoan[]>;
   readonly isConnected: boolean;
   readonly isConnecting: boolean;
   readonly walletAddress: string | null;
+  readonly walletPublicKeyBytes: Uint8Array | null;
   readonly connect: () => Promise<void>;
   readonly flowMessage: string | undefined;
 }
@@ -124,7 +139,11 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [walletPublicKeyBytes, setWalletPublicKeyBytes] = useState<Uint8Array | null>(null);
   const [flowMessage, setFlowMessage] = useState<string | undefined>(undefined);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [publicDataProviderRef, setPublicDataProviderRef] = useState<any>(null);
+  const [contractAddressRef, setContractAddressRef] = useState<ContractAddress | null>(null);
 
   const connectToWallet = useCallback(async (): Promise<{ wallet: ConnectedAPI; config: Configuration }> => {
     const result = await firstValueFrom(
@@ -195,6 +214,14 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
 
     setIsConnected(true);
     setWalletAddress(addresses.shieldedAddress || null);
+
+    // Store the coin public key bytes for later use in getMyLoans
+    if (addresses.shieldedCoinPublicKey) {
+      const coinPkBytes = typeof addresses.shieldedCoinPublicKey === 'string'
+        ? new Uint8Array(Buffer.from(addresses.shieldedCoinPublicKey, 'hex'))
+        : new Uint8Array(addresses.shieldedCoinPublicKey as ArrayBuffer);
+      setWalletPublicKeyBytes(coinPkBytes);
+    }
 
     logger.info({
       indexerUri: config.indexerUri,
@@ -298,6 +325,9 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
 
       const providers = await initializeProviders();
 
+      // Store the public data provider for later ledger queries
+      setPublicDataProviderRef(providers.publicDataProvider);
+
       setFlowMessage('Deploying ZKLoan Credit Scorer contract...');
       logger.info('Deploying ZKLoan Credit Scorer contract...');
 
@@ -311,12 +341,14 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
       });
 
       setContract(deployed);
+      const deployedAddress = deployed.deployTxData.public.contractAddress;
+      setContractAddressRef(deployedAddress);
       setFlowMessage(undefined);
-      logger.info(`Deployed contract at address: ${deployed.deployTxData.public.contractAddress}`);
+      logger.info(`Deployed contract at address: ${deployedAddress}`);
 
       deploymentSubject.next({
         status: 'deployed',
-        contractAddress: deployed.deployTxData.public.contractAddress,
+        contractAddress: deployedAddress,
       });
     } catch (error) {
       setFlowMessage(undefined);
@@ -337,6 +369,9 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
       const providers = await initializeProviders();
       logger.info('Providers initialized successfully');
 
+      // Store the public data provider for later ledger queries
+      setPublicDataProviderRef(providers.publicDataProvider);
+
       setFlowMessage('Joining contract...');
       logger.info({ contractAddress }, 'Joining contract...');
 
@@ -354,11 +389,12 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
       setContract(joined);
       setFlowMessage(undefined);
 
-      const resolvedAddress = joined?.deployTxData?.public?.contractAddress;
+      const resolvedAddress = joined?.deployTxData?.public?.contractAddress ?? contractAddress;
+      setContractAddressRef(resolvedAddress);
 
       deploymentSubject.next({
         status: 'deployed',
-        contractAddress: resolvedAddress ?? contractAddress,
+        contractAddress: resolvedAddress,
       });
     } catch (error) {
       setFlowMessage(undefined);
@@ -383,6 +419,61 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
     setFlowMessage(undefined);
     logger.info(`Transaction ${finalizedTxData.public.txId} added in block ${finalizedTxData.public.blockHeight}`);
   }, [contract, logger]);
+
+  const getMyLoans = useCallback(async (pin: bigint): Promise<UserLoan[]> => {
+    if (!publicDataProviderRef || !contractAddressRef || !walletPublicKeyBytes) {
+      logger.warn('Cannot get loans: missing provider, contract address, or wallet public key');
+      return [];
+    }
+
+    try {
+      setFlowMessage('Fetching your loans...');
+      logger.info('Querying contract state for loans...');
+
+      // Query the contract state from the indexer
+      const contractState = await publicDataProviderRef.queryContractState(contractAddressRef);
+      if (!contractState) {
+        logger.warn('No contract state found');
+        setFlowMessage(undefined);
+        return [];
+      }
+
+      // Parse the ledger state
+      const ledgerState = ZKLoanCreditScorer.ledger(contractState.data);
+
+      // Derive the user's public key from their wallet public key and PIN
+      const userPublicKey = ZKLoanCreditScorer.pureCircuits.publicKey(walletPublicKeyBytes, pin);
+      logger.info({ userPublicKeyHex: Buffer.from(userPublicKey).toString('hex').slice(0, 20) + '...' }, 'Derived user public key');
+
+      // Check if the user has any loans
+      if (!ledgerState.loans.member(userPublicKey)) {
+        logger.info('No loans found for this user');
+        setFlowMessage(undefined);
+        return [];
+      }
+
+      // Get the user's loans map and iterate over it
+      const userLoansMap = ledgerState.loans.lookup(userPublicKey);
+      const loans: UserLoan[] = [];
+
+      // Use the iterator to get all loans
+      for (const [loanId, loanApplication] of userLoansMap) {
+        loans.push({
+          loanId,
+          authorizedAmount: loanApplication.authorizedAmount,
+          status: loanApplication.status === ZKLoanCreditScorer.LoanStatus.Approved ? 'Approved' : 'Rejected',
+        });
+      }
+
+      logger.info({ loanCount: loans.length }, 'Found loans for user');
+      setFlowMessage(undefined);
+      return loans;
+    } catch (error) {
+      setFlowMessage(undefined);
+      logger.error({ error }, 'Failed to get loans');
+      throw error;
+    }
+  }, [publicDataProviderRef, contractAddressRef, walletPublicKeyBytes, logger]);
 
   const connect = useCallback(async () => {
     if (isConnecting || isConnected) {
@@ -415,9 +506,11 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
     deploy: deployNewContract,
     join: joinExistingContract,
     requestLoan: requestLoanTx,
+    getMyLoans,
     isConnected,
     isConnecting,
     walletAddress,
+    walletPublicKeyBytes,
     connect,
     flowMessage,
   };

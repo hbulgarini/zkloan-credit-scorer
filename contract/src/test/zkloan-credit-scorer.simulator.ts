@@ -23,7 +23,7 @@ import {
   Contract,
   type Ledger,
   ledger
-} from "../managed/zkloan-credit-scorer/contract/index.cjs";
+} from "../managed/zkloan-credit-scorer/contract/index.js";
 import { type ZKLoanCreditScorerPrivateState, witnesses } from "../witnesses.js";
 import {createEitherTestUser} from "./utils/address.js";
 import {getUserProfile} from "../../../zkloan-credit-scorer-cli/src/state.utils.js";
@@ -95,6 +95,16 @@ export class ZKLoanCreditScorerSimulator {
       this.circuitContext,
       oldPin,
       newPin
+    ).context;
+    return ledger(this.circuitContext.currentQueryContext.state);
+  }
+
+  public respondToLoan(loanId: bigint, secretPin: bigint, accept: boolean): Ledger {
+    this.circuitContext = this.contract.impureCircuits.respondToLoan(
+      this.circuitContext,
+      loanId,
+      secretPin,
+      accept
     ).context;
     return ledger(this.circuitContext.currentQueryContext.state);
   }

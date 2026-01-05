@@ -19,6 +19,8 @@ import CompactStandardLibrary;
 export enum LoanStatus {
     Approved,
     Rejected,
+    Proposed,
+    NotAccepted,
 }
 export struct LoanApplication {
     authorizedAmount: Uint<16>;
@@ -51,7 +53,28 @@ export circuit requestLoan(amountRequested:Uint<16>, secretPin: Uint<16>):[] {
     const disclosedTopTierAmount = disclose(topTierAmount);
     const disclosedStatus = disclose(status);
     createLoan(disclose(requesterPubKey), amountRequested, disclosedTopTierAmount, disclosedStatus);
-    
+
+    return [];
+}
+
+export circuit respondToLoan(loanId: Uint<16>, secretPin: Uint<16>, accept: Boolean): [] {
+    const zwapPublicKey = ownPublicKey();
+    const requesterPubKey = publicKey(zwapPublicKey.bytes, secretPin);
+    const disclosedPubKey = disclose(requesterPubKey);
+    const disclosedLoanId = disclose(loanId);
+
+    assert(!blacklist.member(zwapPublicKey), "User is blacklisted");
+    assert(loans.member(disclosedPubKey), "No loans found for this user");
+    assert(loans.lookup(disclosedPubKey).member(disclosedLoanId), "Loan not found");
+
+    const existingLoan = loans.lookup(disclosedPubKey).lookup(disclosedLoanId);
+    assert(existingLoan.status == LoanStatus.Proposed, "Loan is not in Proposed status");
+
+    const updatedLoan = accept
+        ? LoanApplication { authorizedAmount: existingLoan.authorizedAmount, status: LoanStatus.Approved }
+        : LoanApplication { authorizedAmount: 0, status: LoanStatus.NotAccepted };
+
+    loans.lookup(disclosedPubKey).insert(disclosedLoanId, disclose(updatedLoan));
     return [];
 }
 
@@ -78,9 +101,17 @@ circuit evaluateApplicant(): [Uint<16>, LoanStatus] {
 circuit createLoan(requester: Bytes<32>, amountRequested: Uint<16>, topTierAmount: Uint<16>, status: LoanStatus): [] {
     const authorizedAmount = amountRequested > topTierAmount ? topTierAmount : amountRequested;
 
+    // Determine final status:
+    // - If rejected (not eligible), keep as Rejected
+    // - If approved and requested <= eligible, keep as Approved
+    // - If approved but requested > eligible, set to Proposed (user must accept the lower amount)
+    const finalStatus = status == LoanStatus.Rejected
+        ? LoanStatus.Rejected
+        : (amountRequested > topTierAmount ? LoanStatus.Proposed : LoanStatus.Approved);
+
     const loan = LoanApplication {
        authorizedAmount: authorizedAmount,
-        status: status,
+        status: finalStatus,
     };
     if(!loans.member(requester)) {
         loans.insert(requester, default<Map<Uint<16>, LoanApplication>>);
@@ -88,7 +119,7 @@ circuit createLoan(requester: Bytes<32>, amountRequested: Uint<16>, topTierAmoun
     const totalLoans = loans.lookup(requester).size();
     assert(totalLoans < 65535, "Maximum number of loans reached");
     const loanNumber = (totalLoans + 1) as Uint<16>;
-    loans.lookup(requester).insert(loanNumber, disclose(loan));  
+    loans.lookup(requester).insert(loanNumber, disclose(loan));
     return [];
 }
 

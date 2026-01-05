@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Stack, Typography, Link } from '@mui/material';
-import { MainLayout, PrivateStateCard, LoanRequestForm } from './components';
+import { MainLayout, PrivateStateCard, LoanRequestForm, MyLoans } from './components';
 
 const App: React.FC = () => {
   return (
@@ -15,6 +15,7 @@ const App: React.FC = () => {
       <Stack spacing={3}>
         <PrivateStateCard />
         <LoanRequestForm />
+        <MyLoans />
       </Stack>
 
       <Box sx={{ mt: 4, textAlign: 'center' }}>
