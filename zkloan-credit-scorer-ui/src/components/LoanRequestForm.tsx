@@ -14,17 +14,15 @@ import {
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import LinkIcon from '@mui/icons-material/Link';
-import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import { useZKLoanContext } from '../hooks';
 import { type ZKLoanDeployment } from '../contexts';
 
 export const LoanRequestForm: React.FC = () => {
-  const { deployment$, deploy, join, requestLoan, flowMessage } = useZKLoanContext();
+  const { deployment$, join, requestLoan, flowMessage, secretPin } = useZKLoanContext();
 
   const [deployment, setDeployment] = useState<ZKLoanDeployment>({ status: 'idle' });
   const [contractAddress, setContractAddress] = useState('');
   const [amount, setAmount] = useState('');
-  const [pin, setPin] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
 
@@ -32,11 +30,6 @@ export const LoanRequestForm: React.FC = () => {
     const subscription = deployment$.subscribe(setDeployment);
     return () => subscription.unsubscribe();
   }, [deployment$]);
-
-  const handleDeploy = () => {
-    setResult(null);
-    deploy();
-  };
 
   const handleJoin = () => {
     if (!contractAddress.trim()) {
@@ -47,24 +40,25 @@ export const LoanRequestForm: React.FC = () => {
     join(contractAddress.trim());
   };
 
+  const isPinValid = secretPin.length >= 4 && secretPin.length <= 6;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!amount || !pin) {
-      setResult({ success: false, message: 'Please fill in all fields' });
+    if (!amount) {
+      setResult({ success: false, message: 'Please enter a loan amount' });
+      return;
+    }
+
+    if (!isPinValid) {
+      setResult({ success: false, message: 'Please enter a valid PIN (4-6 digits) in the Private State section above' });
       return;
     }
 
     const amountNum = parseInt(amount, 10);
-    const pinNum = parseInt(pin, 10);
 
     if (isNaN(amountNum) || amountNum <= 0) {
       setResult({ success: false, message: 'Amount must be a positive number' });
-      return;
-    }
-
-    if (isNaN(pinNum) || pin.length < 4 || pin.length > 6) {
-      setResult({ success: false, message: 'PIN must be 4-6 digits' });
       return;
     }
 
@@ -72,10 +66,9 @@ export const LoanRequestForm: React.FC = () => {
     setResult(null);
 
     try {
-      await requestLoan(BigInt(amountNum), BigInt(pinNum));
+      await requestLoan(BigInt(amountNum));
       setResult({ success: true, message: 'Loan request submitted successfully!' });
       setAmount('');
-      setPin('');
     } catch (error) {
       setResult({
         success: false,
@@ -112,7 +105,7 @@ export const LoanRequestForm: React.FC = () => {
             ? `Contract: ${typeof deployment.contractAddress === 'string'
                 ? `${deployment.contractAddress.slice(0, 10)}...${deployment.contractAddress.slice(-8)}`
                 : `${Array.from(deployment.contractAddress as Uint8Array).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 10)}...`}`
-            : 'Deploy or join a contract to apply'
+            : 'Join a contract to apply'
         }
         subheaderTypographyProps={{ color: 'grey.500' }}
       />
@@ -121,23 +114,7 @@ export const LoanRequestForm: React.FC = () => {
         {!isDeployed && (
           <Box sx={{ mb: 3 }}>
             <Typography variant="body2" color="grey.400" sx={{ mb: 2 }}>
-              Deploy a new contract or join an existing one:
-            </Typography>
-
-            <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-              <Button
-                variant="contained"
-                startIcon={<AccountBalanceIcon />}
-                onClick={handleDeploy}
-                disabled={isLoading}
-                fullWidth
-              >
-                Deploy New Contract
-              </Button>
-            </Box>
-
-            <Typography variant="body2" color="grey.500" sx={{ mb: 1, textAlign: 'center' }}>
-              - or -
+              Enter a contract address to connect:
             </Typography>
 
             <Box sx={{ display: 'flex', gap: 1 }}>
@@ -156,7 +133,7 @@ export const LoanRequestForm: React.FC = () => {
                 }}
               />
               <Button
-                variant="outlined"
+                variant="contained"
                 startIcon={<LinkIcon />}
                 onClick={handleJoin}
                 disabled={isLoading || !contractAddress.trim()}
@@ -188,7 +165,6 @@ export const LoanRequestForm: React.FC = () => {
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               sx={{
-                mb: 2,
                 '& .MuiOutlinedInput-root': {
                   color: '#fff',
                   '& fieldset': { borderColor: 'grey.700' },
@@ -197,24 +173,6 @@ export const LoanRequestForm: React.FC = () => {
                 '& .MuiInputLabel-root': { color: 'grey.400' },
               }}
               inputProps={{ min: 1, max: 10000 }}
-            />
-
-            <TextField
-              fullWidth
-              label="Secret PIN (4-6 digits)"
-              type="password"
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              sx={{
-                mb: 2,
-                '& .MuiOutlinedInput-root': {
-                  color: '#fff',
-                  '& fieldset': { borderColor: 'grey.700' },
-                  '&:hover fieldset': { borderColor: 'grey.500' },
-                },
-                '& .MuiInputLabel-root': { color: 'grey.400' },
-              }}
-              inputProps={{ maxLength: 6 }}
             />
           </Box>
         )}
@@ -227,7 +185,7 @@ export const LoanRequestForm: React.FC = () => {
             fullWidth
             startIcon={<SendIcon />}
             onClick={handleSubmit}
-            disabled={isSubmitting || !amount || !pin}
+            disabled={isSubmitting || !amount || !isPinValid}
           >
             Request Loan
           </Button>

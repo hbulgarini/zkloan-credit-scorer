@@ -27,8 +27,6 @@ import { useZKLoanContext } from '../hooks';
 import { type ZKLoanDeployment, type DeployedZKLoan, type UserLoan, type LoanStatus } from '../contexts';
 import { getLoanProfile, getProfileByApplicantId } from '../utils/loanProfiles';
 
-const DEFAULT_PIN = 1234n;
-
 // Status chip configuration
 const getStatusConfig = (status: LoanStatus): { color: 'success' | 'error' | 'warning' | 'default'; label: string } => {
   switch (status) {
@@ -46,7 +44,7 @@ const getStatusConfig = (status: LoanStatus): { color: 'success' | 'error' | 'wa
 };
 
 export const MyLoans: React.FC = () => {
-  const { deployment$, getMyLoans, respondToLoan, flowMessage } = useZKLoanContext();
+  const { deployment$, getMyLoans, respondToLoan, flowMessage, lastLoanUpdate } = useZKLoanContext();
 
   const [deployment, setDeployment] = useState<ZKLoanDeployment>({ status: 'idle' });
   const [loans, setLoans] = useState<UserLoan[]>([]);
@@ -78,7 +76,7 @@ export const MyLoans: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const userLoans = await getMyLoans(DEFAULT_PIN);
+      const userLoans = await getMyLoans();
       setLoans(userLoans);
       setHasLoaded(true);
     } catch (err) {
@@ -92,7 +90,7 @@ export const MyLoans: React.FC = () => {
     setRespondingLoanId(loanId);
     setError(null);
     try {
-      await respondToLoan(loanId, DEFAULT_PIN, accept);
+      await respondToLoan(loanId, accept);
       // Refresh loans after responding
       await handleFetchLoans();
     } catch (err) {
@@ -108,6 +106,13 @@ export const MyLoans: React.FC = () => {
       handleFetchLoans();
     }
   }, [isDeployed, hasLoaded]);
+
+  // Auto-refresh when a loan operation completes (requestLoan or respondToLoan)
+  useEffect(() => {
+    if (isDeployed && lastLoanUpdate > 0) {
+      handleFetchLoans();
+    }
+  }, [lastLoanUpdate, isDeployed]);
 
   if (!isDeployed) {
     return (

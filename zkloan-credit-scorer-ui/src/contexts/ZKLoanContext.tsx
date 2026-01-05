@@ -77,11 +77,15 @@ export interface ZKLoanAPIProvider {
   readonly setPrivateState: (state: ZKLoanCreditScorerPrivateState) => void;
   readonly currentProfileId: string;
   readonly setCurrentProfileId: (profileId: string) => void;
+  readonly secretPin: string;
+  readonly setSecretPin: (pin: string) => void;
   readonly deploy: () => void;
   readonly join: (contractAddress: ContractAddress) => void;
-  readonly requestLoan: (amount: bigint, pin: bigint) => Promise<void>;
-  readonly respondToLoan: (loanId: bigint, pin: bigint, accept: boolean) => Promise<void>;
-  readonly getMyLoans: (pin: bigint) => Promise<UserLoan[]>;
+  readonly requestLoan: (amount: bigint) => Promise<void>;
+  readonly respondToLoan: (loanId: bigint, accept: boolean) => Promise<void>;
+  readonly refreshLoans: () => Promise<void>;
+  readonly getMyLoans: () => Promise<UserLoan[]>;
+  readonly lastLoanUpdate: number;
   readonly isConnected: boolean;
   readonly isConnecting: boolean;
   readonly walletAddress: string | null;
@@ -140,6 +144,8 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
     monthsAsCustomer: 24n,
   });
   const [currentProfileId, setCurrentProfileId] = useState<string>('user-001');
+  const [secretPin, setSecretPin] = useState<string>('1234');
+  const [lastLoanUpdate, setLastLoanUpdate] = useState<number>(0);
   const [deploymentSubject] = useState(() => new BehaviorSubject<ZKLoanDeployment>({ status: 'idle' }));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [contract, setContract] = useState<any>(null);
@@ -419,10 +425,16 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
     }
   }, [initializeProviders, logger, privateState, deploymentSubject]);
 
-  const requestLoanTx = useCallback(async (amount: bigint, pin: bigint) => {
+  const requestLoanTx = useCallback(async (amount: bigint) => {
     if (!contract) {
       throw new Error('Contract not deployed. Please deploy or join a contract first.');
     }
+
+    const pinNum = parseInt(secretPin, 10);
+    if (isNaN(pinNum)) {
+      throw new Error('Invalid PIN');
+    }
+    const pin = BigInt(pinNum);
 
     setFlowMessage('Requesting loan...');
     logger.info(`Requesting loan for amount: ${amount} with PIN...`);
@@ -458,12 +470,21 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
         logger.warn({ error }, 'Failed to save loan profile mapping (non-critical)');
       }
     }
-  }, [contract, logger, publicDataProviderRef, contractAddressRef, walletPublicKeyBytes, currentProfileId]);
 
-  const respondToLoanTx = useCallback(async (loanId: bigint, pin: bigint, accept: boolean) => {
+    // Signal that loans have been updated so UI can refresh
+    setLastLoanUpdate(Date.now());
+  }, [contract, logger, publicDataProviderRef, contractAddressRef, walletPublicKeyBytes, currentProfileId, secretPin]);
+
+  const respondToLoanTx = useCallback(async (loanId: bigint, accept: boolean) => {
     if (!contract) {
       throw new Error('Contract not deployed. Please deploy or join a contract first.');
     }
+
+    const pinNum = parseInt(secretPin, 10);
+    if (isNaN(pinNum)) {
+      throw new Error('Invalid PIN');
+    }
+    const pin = BigInt(pinNum);
 
     setFlowMessage(accept ? 'Accepting loan proposal...' : 'Declining loan proposal...');
     logger.info(`Responding to loan ${loanId}: ${accept ? 'accept' : 'decline'}`);
@@ -472,13 +493,22 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
 
     setFlowMessage(undefined);
     logger.info(`Transaction ${finalizedTxData.public.txId} added in block ${finalizedTxData.public.blockHeight}`);
-  }, [contract, logger]);
 
-  const getMyLoans = useCallback(async (pin: bigint): Promise<UserLoan[]> => {
+    // Signal that loans have been updated so UI can refresh
+    setLastLoanUpdate(Date.now());
+  }, [contract, logger, secretPin]);
+
+  const getMyLoans = useCallback(async (): Promise<UserLoan[]> => {
     if (!publicDataProviderRef || !contractAddressRef || !walletPublicKeyBytes) {
       logger.warn('Cannot get loans: missing provider, contract address, or wallet public key');
       return [];
     }
+
+    const pinNum = parseInt(secretPin, 10);
+    if (isNaN(pinNum)) {
+      throw new Error('Invalid PIN');
+    }
+    const pin = BigInt(pinNum);
 
     try {
       setFlowMessage('Fetching your loans...');
@@ -543,7 +573,12 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
       logger.error({ error }, 'Failed to get loans');
       throw error;
     }
-  }, [publicDataProviderRef, contractAddressRef, walletPublicKeyBytes, logger]);
+  }, [publicDataProviderRef, contractAddressRef, walletPublicKeyBytes, logger, secretPin]);
+
+  const refreshLoans = useCallback(async () => {
+    // Trigger a refresh by updating lastLoanUpdate
+    setLastLoanUpdate(Date.now());
+  }, []);
 
   const connect = useCallback(async () => {
     if (isConnecting || isConnected) {
@@ -575,11 +610,15 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
     setPrivateState,
     currentProfileId,
     setCurrentProfileId,
+    secretPin,
+    setSecretPin,
     deploy: deployNewContract,
     join: joinExistingContract,
     requestLoan: requestLoanTx,
     respondToLoan: respondToLoanTx,
+    refreshLoans,
     getMyLoans,
+    lastLoanUpdate,
     isConnected,
     isConnecting,
     walletAddress,

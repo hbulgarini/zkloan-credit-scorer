@@ -11,8 +11,11 @@ import {
   Box,
   Chip,
   Divider,
+  TextField,
+  Button,
 } from '@mui/material';
 import LockIcon from '@mui/icons-material/Lock';
+import SearchIcon from '@mui/icons-material/Search';
 import { useZKLoanContext } from '../hooks';
 import { userProfiles } from '../utils/loanProfiles';
 
@@ -36,7 +39,7 @@ const evaluateTier = (creditScore: number, monthlyIncome: number, monthsAsCustom
 };
 
 export const PrivateStateCard: React.FC = () => {
-  const { privateState, setPrivateState, setCurrentProfileId } = useZKLoanContext();
+  const { privateState, setPrivateState, setCurrentProfileId, secretPin, setSecretPin, refreshLoans } = useZKLoanContext();
   const [selectedProfile, setSelectedProfile] = React.useState(0);
 
   const currentProfile = userProfiles[selectedProfile];
@@ -62,6 +65,18 @@ export const PrivateStateCard: React.FC = () => {
     // Update the current profile ID in context for loan tracking
     setCurrentProfileId(profile.applicantId);
   };
+
+  const handlePinChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Only allow digits
+    const value = e.target.value.replace(/\D/g, '').slice(0, 6);
+    setSecretPin(value);
+  };
+
+  const handleLoadLoans = () => {
+    refreshLoans();
+  };
+
+  const isPinValid = secretPin.length >= 4 && secretPin.length <= 6;
 
   return (
     <Card sx={{ background: '#1a1a2e', color: '#fff' }}>
@@ -95,6 +110,35 @@ export const PrivateStateCard: React.FC = () => {
             ))}
           </Select>
         </FormControl>
+
+        <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
+          <TextField
+            fullWidth
+            size="small"
+            label="Secret PIN (4-6 digits)"
+            type="password"
+            value={secretPin}
+            onChange={handlePinChange}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                color: '#fff',
+                '& fieldset': { borderColor: 'grey.700' },
+                '&:hover fieldset': { borderColor: 'grey.500' },
+              },
+              '& .MuiInputLabel-root': { color: 'grey.400' },
+            }}
+            inputProps={{ maxLength: 6 }}
+          />
+          <Button
+            variant="contained"
+            startIcon={<SearchIcon />}
+            onClick={handleLoadLoans}
+            disabled={!isPinValid}
+            sx={{ minWidth: 140 }}
+          >
+            Load Loans
+          </Button>
+        </Box>
 
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2, mb: 3 }}>
           <Box sx={{ textAlign: 'center', p: 2, background: '#16213e', borderRadius: 2 }}>
