@@ -77,6 +77,8 @@ export const MyLoans: React.FC = () => {
     setError(null);
     try {
       const userLoans = await getMyLoans();
+      // Sort by loanId ascending
+      userLoans.sort((a, b) => Number(a.loanId - b.loanId));
       setLoans(userLoans);
       setHasLoaded(true);
     } catch (err) {

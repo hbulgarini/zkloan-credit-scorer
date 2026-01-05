@@ -15,7 +15,6 @@ import {
   Button,
 } from '@mui/material';
 import LockIcon from '@mui/icons-material/Lock';
-import SearchIcon from '@mui/icons-material/Search';
 import { useZKLoanContext } from '../hooks';
 import { userProfiles } from '../utils/loanProfiles';
 
@@ -131,12 +130,11 @@ export const PrivateStateCard: React.FC = () => {
           />
           <Button
             variant="contained"
-            startIcon={<SearchIcon />}
             onClick={handleLoadLoans}
             disabled={!isPinValid}
-            sx={{ minWidth: 140 }}
+            sx={{ minWidth: 120 }}
           >
-            Load Loans
+            Set PIN
           </Button>
         </Box>
 
