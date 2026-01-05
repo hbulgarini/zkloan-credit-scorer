@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -14,20 +14,7 @@ import {
 } from '@mui/material';
 import LockIcon from '@mui/icons-material/Lock';
 import { useZKLoanContext } from '../hooks';
-
-// Predefined user profiles from state.utils.ts
-const userProfiles = [
-  { applicantId: 'user-001', creditScore: 720, monthlyIncome: 2500, monthsAsCustomer: 24 },
-  { applicantId: 'user-002', creditScore: 650, monthlyIncome: 1800, monthsAsCustomer: 11 },
-  { applicantId: 'user-003', creditScore: 580, monthlyIncome: 2200, monthsAsCustomer: 36 },
-  { applicantId: 'user-004', creditScore: 710, monthlyIncome: 1900, monthsAsCustomer: 5 },
-  { applicantId: 'user-005', creditScore: 520, monthlyIncome: 3000, monthsAsCustomer: 48 },
-  { applicantId: 'user-006', creditScore: 810, monthlyIncome: 4500, monthsAsCustomer: 60 },
-  { applicantId: 'user-007', creditScore: 639, monthlyIncome: 2100, monthsAsCustomer: 18 },
-  { applicantId: 'user-008', creditScore: 680, monthlyIncome: 1450, monthsAsCustomer: 30 },
-  { applicantId: 'user-009', creditScore: 750, monthlyIncome: 2100, monthsAsCustomer: 23 },
-  { applicantId: 'user-010', creditScore: 579, monthlyIncome: 1900, monthsAsCustomer: 12 },
-];
+import { userProfiles } from '../utils/loanProfiles';
 
 interface TierInfo {
   tier: string;
@@ -49,7 +36,7 @@ const evaluateTier = (creditScore: number, monthlyIncome: number, monthsAsCustom
 };
 
 export const PrivateStateCard: React.FC = () => {
-  const { privateState, setPrivateState } = useZKLoanContext();
+  const { privateState, setPrivateState, setCurrentProfileId } = useZKLoanContext();
   const [selectedProfile, setSelectedProfile] = React.useState(0);
 
   const currentProfile = userProfiles[selectedProfile];
@@ -59,6 +46,11 @@ export const PrivateStateCard: React.FC = () => {
     Number(privateState.monthsAsCustomer),
   );
 
+  // Initialize the currentProfileId in context on mount
+  useEffect(() => {
+    setCurrentProfileId(userProfiles[0].applicantId);
+  }, [setCurrentProfileId]);
+
   const handleProfileChange = (index: number) => {
     setSelectedProfile(index);
     const profile = userProfiles[index];
@@ -67,6 +59,8 @@ export const PrivateStateCard: React.FC = () => {
       monthlyIncome: BigInt(profile.monthlyIncome),
       monthsAsCustomer: BigInt(profile.monthsAsCustomer),
     });
+    // Update the current profile ID in context for loan tracking
+    setCurrentProfileId(profile.applicantId);
   };
 
   return (

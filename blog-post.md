@@ -39,7 +39,9 @@ For this demo, the system evaluates applicants across three simplified tiers (re
 The magic happens in what's disclosed versus what stays private:
 
 - **Private**: Credit score (720), monthly income ($2,500), tenure (24 months), secret PIN
-- **Public**: Loan approved, authorized amount ($10,000), user's pseudonymous identifier
+- **Public**: Loan status, authorized amount, user's pseudonymous identifier
+
+**The Proposal Flow**: When a user requests more than their tier allows (e.g., requesting $15,000 when they qualify for $10,000), the system doesn't auto-approve a reduced amount. Instead, it creates a *proposal* showing the maximum eligible amount, letting the user decide whether to accept or decline. This transparent approach ensures users always have agency over their financial decisions.
 
 The lender knows you qualified for Tier 1. They don't know your exact score is 720 or that you earn $2,500. The ZK proof guarantees you met the criteria—cryptographic proof, not trust.
 
@@ -267,6 +269,75 @@ The entire decision tree—all the comparisons, the tier selection, the amount c
 - Access control decisions
 - Auction bid validation
 
+### Pattern 4: User-Controlled Proposal Acceptance
+
+ZKLoan implements a proposal flow that gives users agency over adjusted loan amounts. When a user requests more than they qualify for, the loan enters a `Proposed` state rather than being auto-approved at a lower amount.
+
+```compact
+export enum LoanStatus {
+    Approved,      // Loan granted as requested or accepted by user
+    Rejected,      // Applicant not eligible
+    Proposed,      // Offered amount differs from requested; awaiting user decision
+    NotAccepted,   // User declined the proposed amount
+}
+
+circuit createLoan(requester: Bytes<32>, amountRequested: Uint<16>,
+                   topTierAmount: Uint<16>, status: LoanStatus): [] {
+    const authorizedAmount = amountRequested > topTierAmount
+        ? topTierAmount : amountRequested;
+
+    // Determine final status based on amount comparison
+    const finalStatus = status == LoanStatus.Rejected
+        ? LoanStatus.Rejected
+        : (amountRequested > topTierAmount
+            ? LoanStatus.Proposed
+            : LoanStatus.Approved);
+
+    const loan = LoanApplication {
+        authorizedAmount: authorizedAmount,
+        status: finalStatus,
+    };
+    // ... store loan
+}
+```
+
+The user can then respond to the proposal:
+
+```compact
+export circuit respondToLoan(loanId: Uint<16>, secretPin: Uint<16>,
+                             accept: Boolean): [] {
+    // Verify user identity via PIN-derived public key
+    const requesterPubKey = publicKey(ownPublicKey().bytes, secretPin);
+
+    // Ensure loan exists and is in Proposed status
+    const existingLoan = loans.lookup(requesterPubKey).lookup(loanId);
+    assert(existingLoan.status == LoanStatus.Proposed,
+           "Loan is not in Proposed status");
+
+    // Update based on user's decision
+    const updatedLoan = accept
+        ? LoanApplication { authorizedAmount: existingLoan.authorizedAmount,
+                           status: LoanStatus.Approved }
+        : LoanApplication { authorizedAmount: 0,
+                           status: LoanStatus.NotAccepted };
+
+    loans.lookup(requesterPubKey).insert(loanId, disclose(updatedLoan));
+}
+```
+
+**Why This Pattern?**
+
+1. **User agency**: Users explicitly consent to different terms than requested
+2. **Audit trail**: The ledger records both the proposal and the user's response
+3. **No surprises**: Users aren't unexpectedly granted smaller amounts
+4. **Regulatory alignment**: Financial products often require explicit acceptance of modified terms
+
+This pattern applies broadly to any scenario involving negotiated outcomes:
+- Insurance policy adjustments
+- Subscription tier downgrades
+- Resource allocation requests
+- Bid modifications in auctions
+
 ---
 
 ## Privacy Boundaries Summary
@@ -275,13 +346,14 @@ Understanding what's private versus public is crucial when designing ZK applicat
 
 | Private (in ZK proof) | Public (on ledger) |
 |-----------------------|-------------------|
-| Credit score | Approved amount |
-| Monthly income | Loan status (approved/rejected) |
+| Credit score | Authorized amount |
+| Monthly income | Loan status (Approved/Rejected/Proposed/NotAccepted) |
 | Months as customer | User's derived public key |
-| Secret PIN | Blacklist membership |
-| Tier qualification logic | Admin public key |
+| Secret PIN | User's acceptance/decline decision |
+| Tier qualification logic | Blacklist membership |
+| Whether requested amount exceeded eligibility | Admin public key |
 
-The ZK proof guarantees the private inputs satisfy the public outputs. A verifier knows that *some* valid credit profile led to this approval, without learning *which* profile.
+The ZK proof guarantees the private inputs satisfy the public outputs. A verifier knows that *some* valid credit profile led to this approval, without learning *which* profile. They can see that a loan was proposed and later accepted, but not why the original amount was reduced.
 
 ---
 
@@ -295,8 +367,9 @@ Key takeaways:
 - **Circuits** perform computation inside ZK proofs
 - **Selective disclosure** with `disclose` controls exactly what becomes public
 - **Fixed-iteration patterns** handle variable workloads across multiple transactions
+- **Proposal flows** give users agency over adjusted terms while maintaining privacy
 
-The patterns shown here—pseudonymous identity derivation, batched state migration, and private rule evaluation—are building blocks for a wide range of privacy-preserving applications.
+The patterns shown here—pseudonymous identity derivation, batched state migration, private rule evaluation, and user-controlled proposal acceptance—are building blocks for a wide range of privacy-preserving applications.
 
 Ready to explore further? Check out the [ZKLoan Credit Scorer repository](https://github.com/midnight/zkloan-credit-scorer) to run the CLI, examine the tests, and experiment with the Compact contract yourself.
 

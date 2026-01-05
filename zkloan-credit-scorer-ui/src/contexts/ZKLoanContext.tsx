@@ -1,4 +1,4 @@
-import React, { type PropsWithChildren, createContext, useState, useCallback, useMemo } from 'react';
+import React, { type PropsWithChildren, createContext, useState, useCallback, useMemo, useEffect } from 'react';
 import { Buffer } from 'buffer';
 import { type ContractAddress, fromHex, toHex } from '@midnight-ntwrk/compact-runtime';
 import * as ledger from '@midnight-ntwrk/ledger-v6';
@@ -33,19 +33,22 @@ import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-p
 import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { deployContract, findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
 import { ZKLoanCreditScorer, witnesses, type ZKLoanCreditScorerPrivateState } from 'zkloan-credit-scorer-contract';
+import { saveLoanProfile } from '../utils/loanProfiles';
 
 export type ZKLoanCircuitKeys = 'requestLoan' | 'changePin' | 'blacklistUser' | 'removeBlacklistUser' | 'transferAdmin';
 
 // Re-export loan types for components
+export type LoanStatus = 'Approved' | 'Rejected' | 'Proposed' | 'NotAccepted';
+
 export type LoanApplication = {
   authorizedAmount: bigint;
-  status: 'Approved' | 'Rejected';
+  status: LoanStatus;
 };
 
 export type UserLoan = {
   loanId: bigint;
   authorizedAmount: bigint;
-  status: 'Approved' | 'Rejected';
+  status: LoanStatus;
 };
 
 export interface IdleDeployment {
@@ -72,9 +75,12 @@ export interface ZKLoanAPIProvider {
   readonly deployment$: Observable<ZKLoanDeployment>;
   readonly privateState: ZKLoanCreditScorerPrivateState;
   readonly setPrivateState: (state: ZKLoanCreditScorerPrivateState) => void;
+  readonly currentProfileId: string;
+  readonly setCurrentProfileId: (profileId: string) => void;
   readonly deploy: () => void;
   readonly join: (contractAddress: ContractAddress) => void;
   readonly requestLoan: (amount: bigint, pin: bigint) => Promise<void>;
+  readonly respondToLoan: (loanId: bigint, pin: bigint, accept: boolean) => Promise<void>;
   readonly getMyLoans: (pin: bigint) => Promise<UserLoan[]>;
   readonly isConnected: boolean;
   readonly isConnecting: boolean;
@@ -133,6 +139,7 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
     monthlyIncome: 2500n,
     monthsAsCustomer: 24n,
   });
+  const [currentProfileId, setCurrentProfileId] = useState<string>('user-001');
   const [deploymentSubject] = useState(() => new BehaviorSubject<ZKLoanDeployment>({ status: 'idle' }));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [contract, setContract] = useState<any>(null);
@@ -205,6 +212,12 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
     () => inMemoryPrivateStateProvider<string, ZKLoanCreditScorerPrivateState>(),
     []
   );
+
+  // Sync React privateState with the provider whenever it changes
+  useEffect(() => {
+    privateStateProvider.set('zkLoanCreditScorerPrivateState', privateState);
+    logger.info({ privateState }, 'Private state synced to provider');
+  }, [privateState, privateStateProvider, logger]);
 
   const initializeProviders = useCallback(async () => {
     const { wallet, config } = await connectToWallet();
@@ -418,6 +431,47 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
 
     setFlowMessage(undefined);
     logger.info(`Transaction ${finalizedTxData.public.txId} added in block ${finalizedTxData.public.blockHeight}`);
+
+    // After successful loan request, save the profile mapping
+    // We need to find the newly created loan ID by querying the contract state
+    if (publicDataProviderRef && contractAddressRef && walletPublicKeyBytes) {
+      try {
+        const contractState = await publicDataProviderRef.queryContractState(contractAddressRef);
+        if (contractState) {
+          const ledgerState = ZKLoanCreditScorer.ledger(contractState.data);
+          const userPublicKey = ZKLoanCreditScorer.pureCircuits.publicKey(walletPublicKeyBytes, pin);
+
+          if (ledgerState.loans.member(userPublicKey)) {
+            const userLoansMap = ledgerState.loans.lookup(userPublicKey);
+            let maxLoanId = 0n;
+            for (const [loanId] of userLoansMap) {
+              if (loanId > maxLoanId) {
+                maxLoanId = loanId;
+              }
+            }
+            // Save the profile used for this loan
+            saveLoanProfile(contractAddressRef, maxLoanId.toString(), currentProfileId);
+            logger.info({ loanId: maxLoanId.toString(), profileId: currentProfileId }, 'Saved loan profile mapping');
+          }
+        }
+      } catch (error) {
+        logger.warn({ error }, 'Failed to save loan profile mapping (non-critical)');
+      }
+    }
+  }, [contract, logger, publicDataProviderRef, contractAddressRef, walletPublicKeyBytes, currentProfileId]);
+
+  const respondToLoanTx = useCallback(async (loanId: bigint, pin: bigint, accept: boolean) => {
+    if (!contract) {
+      throw new Error('Contract not deployed. Please deploy or join a contract first.');
+    }
+
+    setFlowMessage(accept ? 'Accepting loan proposal...' : 'Declining loan proposal...');
+    logger.info(`Responding to loan ${loanId}: ${accept ? 'accept' : 'decline'}`);
+
+    const finalizedTxData = await contract.callTx.respondToLoan(loanId, pin, accept);
+
+    setFlowMessage(undefined);
+    logger.info(`Transaction ${finalizedTxData.public.txId} added in block ${finalizedTxData.public.blockHeight}`);
   }, [contract, logger]);
 
   const getMyLoans = useCallback(async (pin: bigint): Promise<UserLoan[]> => {
@@ -456,12 +510,28 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
       const userLoansMap = ledgerState.loans.lookup(userPublicKey);
       const loans: UserLoan[] = [];
 
+      // Map loan status enum to string
+      const mapLoanStatus = (status: number): LoanStatus => {
+        switch (status) {
+          case ZKLoanCreditScorer.LoanStatus.Approved:
+            return 'Approved';
+          case ZKLoanCreditScorer.LoanStatus.Rejected:
+            return 'Rejected';
+          case ZKLoanCreditScorer.LoanStatus.Proposed:
+            return 'Proposed';
+          case ZKLoanCreditScorer.LoanStatus.NotAccepted:
+            return 'NotAccepted';
+          default:
+            return 'Rejected';
+        }
+      };
+
       // Use the iterator to get all loans
       for (const [loanId, loanApplication] of userLoansMap) {
         loans.push({
           loanId,
           authorizedAmount: loanApplication.authorizedAmount,
-          status: loanApplication.status === ZKLoanCreditScorer.LoanStatus.Approved ? 'Approved' : 'Rejected',
+          status: mapLoanStatus(loanApplication.status),
         });
       }
 
@@ -503,9 +573,12 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
     deployment$: deploymentSubject.asObservable(),
     privateState,
     setPrivateState,
+    currentProfileId,
+    setCurrentProfileId,
     deploy: deployNewContract,
     join: joinExistingContract,
     requestLoan: requestLoanTx,
+    respondToLoan: respondToLoanTx,
     getMyLoans,
     isConnected,
     isConnecting,

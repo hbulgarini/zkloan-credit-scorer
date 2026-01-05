@@ -3,7 +3,7 @@ import {
   encodeCoinPublicKey,
 } from '@midnight-ntwrk/compact-runtime';
 import { encodeContractAddress } from '@midnight-ntwrk/ledger-v6';
-import type * as Compact from '../../managed/zkloan-credit-scorer/contract/index.cjs';
+import type * as Compact from '../../managed/zkloan-credit-scorer/contract/index.js';
 
 /**
  * @description Converts an ASCII string to its hexadecimal representation,

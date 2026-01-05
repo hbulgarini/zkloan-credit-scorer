@@ -1,4 +1,4 @@
-import { Ledger } from "./managed/zkloan-credit-scorer/contract/index.cjs";
+import { Ledger } from "./managed/zkloan-credit-scorer/contract/index.js";
 import { WitnessContext } from "@midnight-ntwrk/compact-runtime";
 export type ZKLoanCreditScorerPrivateState = {
     creditScore: bigint;

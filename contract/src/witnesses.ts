@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Ledger } from "./managed/zkloan-credit-scorer/contract/index.cjs";
+import { Ledger } from "./managed/zkloan-credit-scorer/contract/index.js";
 import { WitnessContext } from "@midnight-ntwrk/compact-runtime";
 
 

@@ -30,7 +30,11 @@ In the context of the ZKLoan DApp:
 
 - The Private State: The user's sensitive financial profile, defined by the Applicant struct (creditScore, monthlyIncome, etc.), is the private state. It is provided to the contract's logic as a witness and is never transmitted to the network.
 
-- The Public State: The final, non-sensitive outcome of the loan application (e.g., Approved with an authorized amount, or Rejected), defined by the LoanApplication struct, is the public state, which is verifiably recorded on the ledger.
+- The Public State: The final, non-sensitive outcome of the loan application is the public state, which is verifiably recorded on the ledger. The LoanApplication struct contains the authorized amount and a status that can be one of four values:
+  - `Approved`: The loan was granted as requested (or accepted by the user after a proposal)
+  - `Rejected`: The applicant did not meet minimum eligibility requirements
+  - `Proposed`: The requested amount exceeded the user's eligible tier; awaiting user decision
+  - `NotAccepted`: The user declined a proposed loan offer
 
 The bridge between these two worlds is the zero-knowledge proof. The contract's logic executes off-chain, evaluating the user's private data and generating a cryptographic proof. This proof confirms that the evaluation was performed correctly according to the predefined rules, without revealing any of the underlying private information. The on-chain component of the contract simply verifies this proof before updating the public ledger, ensuring both privacy and integrity.
 
@@ -126,6 +130,10 @@ User Actions:
 
 - Requesting a Loan (requestLoan): This is the core function for a user. To apply for a loan, the user provides two public inputs: the amountRequested and their secretPin. The contract then executes the private credit evaluation, generates a zero-knowledge proof, and records the public outcome on the ledger. This action is atomic; a user cannot request a loan if their public key is on the blacklist or if they have a PIN change in progress.
 
+  **Important**: If the requested amount exceeds the user's eligible tier maximum, the loan is not auto-approved at a reduced amount. Instead, it enters a `Proposed` status, allowing the user to review and explicitly accept or decline the offered amount.
+
+- Responding to a Loan Proposal (respondToLoan): When a loan is in `Proposed` status (because the requested amount exceeded the user's eligibility), the user must explicitly respond. This circuit takes the loanId, the user's secretPin, and a boolean accept parameter. If the user accepts, the loan status changes to `Approved`. If declined, the status becomes `NotAccepted` and the authorized amount is set to zero. This ensures users always have agency over their financial decisions and are never surprised by receiving less than they requested.
+
 - Changing a PIN (changePin): A user can change the secret PIN associated with their public identifier. This is a crucial feature for account security and recovery. Because a user can have multiple loan applications, this action is designed as a multi-transaction, batched process. The user calls the changePin circuit repeatedly. In each call, the circuit migrates a fixed-size batch of their loan records from the old public key to the new one. The onGoingPinMigration ledger tracks the progress, ensuring the migration can be safely paused and resumed. This batched approach is a necessary design pattern to handle an unknown number of on-chain records without violating the fixed-computation limits of a zero-knowledge circuit.
 
 
@@ -219,6 +227,46 @@ Design Decisions: This circuit is responsible for all interactions with the loan
 - Handling New Users: The if(!loans.member(requester)) check is crucial. Before attempting to add a loan, the circuit checks if the user has an existing entry in the outer map. If not, it first initializes their personal inner Map for loans, preventing errors.
 
 - Explicit Disclosure: The final disclose(loan) call is a critical part of the design. It signals to the compiler that the LoanApplication object, whose values were derived from the private evaluation, is now intentionally being made public by writing it to the ledger.
+
+- Proposal Flow Logic: The circuit now determines the final loan status based on whether the requested amount exceeds the user's eligible tier maximum. If `amountRequested > topTierAmount`, the loan enters `Proposed` status instead of being auto-approved at a reduced amount. This design gives users explicit control over accepting different terms than they originally requested.
+
+
+#### respondToLoan Circuit
+
+Logic:
+
+Code snippet
+
+```
+export circuit respondToLoan(loanId: Uint<16>, secretPin: Uint<16>, accept: Boolean): [] {
+    const zwapPublicKey = ownPublicKey();
+    const requesterPubKey = publicKey(zwapPublicKey.bytes, secretPin);
+
+    assert(!blacklist.member(zwapPublicKey), "User is blacklisted");
+    assert(loans.member(requesterPubKey), "No loans found for this user");
+    assert(loans.lookup(requesterPubKey).member(loanId), "Loan not found");
+
+    const existingLoan = loans.lookup(requesterPubKey).lookup(loanId);
+    assert(existingLoan.status == LoanStatus.Proposed, "Loan is not in Proposed status");
+
+    const updatedLoan = accept
+        ? LoanApplication { authorizedAmount: existingLoan.authorizedAmount, status: LoanStatus.Approved }
+        : LoanApplication { authorizedAmount: 0, status: LoanStatus.NotAccepted };
+
+    loans.lookup(requesterPubKey).insert(loanId, disclose(updatedLoan));
+    return [];
+}
+```
+
+Design Decisions: This circuit enables users to respond to loan proposals, completing the two-phase approval flow for cases where the requested amount exceeded eligibility.
+
+- User Agency: Rather than auto-approving loans at reduced amounts, this circuit gives users explicit control. They can review the proposed amount and make an informed decision to accept or decline.
+
+- Identity Verification: The circuit derives the user's public key from their Zswap key and PIN, ensuring only the loan owner can respond to their proposals.
+
+- State Validation: Multiple assertions ensure the loan exists and is in the correct `Proposed` status before allowing any modification.
+
+- Clean State Transitions: If accepted, the loan moves to `Approved` with the original authorized amount preserved. If declined, the loan moves to `NotAccepted` with the amount set to zero, providing a clear audit trail of the user's decision.
 
 
 #### requestLoan Circuit
