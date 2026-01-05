@@ -2,6 +2,122 @@
 
 :warning: :construction: This repository as well as the README file is heavily under construction :construction: :warning:
 
+---
+
+## Installation & Setup
+
+### Prerequisites
+
+Before running this application, ensure you have the following installed:
+
+- **Node.js** (v18 or higher)
+- **npm** (v9 or higher)
+- **Midnight Lace Wallet** browser extension ([Download](https://midnight.network))
+- **Compact Compiler** (`compactc`) for building the contract
+- **Local Proof Server** running on your machine (required for generating ZK proofs)
+
+### 1. Clone and Install Dependencies
+
+```bash
+git clone https://github.com/midnight/zkloan-credit-scorer.git
+cd zkloan-credit-scorer
+npm install
+```
+
+### 2. Build the Contract
+
+The Compact smart contract must be compiled before running the UI:
+
+```bash
+cd contract
+npm run build
+```
+
+This compiles the Compact contract and generates:
+- JavaScript bindings in `dist/managed/zkloan-credit-scorer/contract/`
+- Prover/verifier keys in `dist/managed/zkloan-credit-scorer/keys/`
+- ZK intermediate representations in `dist/managed/zkloan-credit-scorer/zkir/`
+
+### 3. Run the Contract Tests (Optional)
+
+```bash
+cd contract
+npm test
+```
+
+### 4. Start the Proof Server
+
+The local proof server is required to generate zero-knowledge proofs. Start it before running the UI:
+
+```bash
+# Follow Midnight documentation for starting the proof server
+# Typically runs on http://localhost:6300
+```
+
+### 5. Deploy the Contract
+
+Before users can interact with the DApp, the contract must be deployed to the Midnight network:
+
+```bash
+cd contract
+npm run deploy
+```
+
+Save the contract address output - users will need it to connect via the UI.
+
+### 6. Build and Run the UI
+
+```bash
+cd zkloan-credit-scorer-ui
+npm run build
+npm run preview
+```
+
+Or for development with hot reload:
+
+```bash
+cd zkloan-credit-scorer-ui
+npm run dev
+```
+
+The UI will be available at `http://localhost:5173` (dev) or `http://localhost:4173` (preview).
+
+### 7. Connect to the Contract
+
+1. Open the UI in your browser
+2. Ensure Midnight Lace wallet is installed and connected to the correct network
+3. Enter the deployed contract address in the "Contract Connection" field
+4. Click "Connect" to join the contract
+
+### Environment Configuration
+
+The UI can be configured via environment variables in `.env`:
+
+```bash
+VITE_NETWORK_ID=TestNet  # or MainNet
+```
+
+### Project Structure
+
+```
+zkloan-credit-scorer/
+├── contract/                    # Compact smart contract
+│   ├── src/
+│   │   └── zkloan-credit-scorer.compact
+│   └── dist/                    # Compiled output
+├── zkloan-credit-scorer-ui/     # React frontend
+│   ├── src/
+│   │   ├── components/          # UI components
+│   │   ├── contexts/            # React context (ZKLoanContext)
+│   │   └── utils/               # Utility functions
+│   └── public/
+│       ├── keys/                # Prover keys (copied during build)
+│       └── zkir/                # ZK IR files (copied during build)
+└── README.md
+```
+
+---
+
 
 
 ## The Rationale of the ZKLoan Credit Scorer Example
