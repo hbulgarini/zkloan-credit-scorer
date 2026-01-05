@@ -98,16 +98,18 @@ circuit evaluateApplicant(): [Uint<16>, LoanStatus] {
 
 This entire evaluation happens inside the proof. The blockchain never sees `profile.creditScore >= 700`—it only sees the returned tier amount and status after they're disclosed.
 
-### Selective Disclosure: The `disclose` Keyword
+### Explicit Disclosure: The `disclose` Keyword
 
-The `disclose` keyword is the bridge between private computation and public state. It marks the boundary where data exits the ZK proof and becomes visible on-chain.
+Compact requires **explicit disclosure**—a conscious acknowledgment that witness-derived data will become public. The `disclose()` wrapper doesn't cause disclosure itself; it tells the compiler "I understand this value will be revealed when stored to ledger, returned from a circuit, or passed to another contract."
+
+Without `disclose()`, the compiler blocks any code path where witness data might become public. This ensures privacy by default—you can't accidentally expose sensitive information.
 
 ```compact
 export circuit requestLoan(amountRequested: Uint<16>, secretPin: Uint<16>): [] {
     // Private computation
     const [topTierAmount, status] = evaluateApplicant();
 
-    // Selective disclosure - only these values become public
+    // Explicit disclosure - only these values become public
     const disclosedTopTierAmount = disclose(topTierAmount);
     const disclosedStatus = disclose(status);
 
@@ -365,7 +367,7 @@ Key takeaways:
 
 - **Witnesses** inject private data that never touches the blockchain
 - **Circuits** perform computation inside ZK proofs
-- **Selective disclosure** with `disclose` controls exactly what becomes public
+- **Explicit disclosure** with `disclose` controls exactly what becomes public
 - **Fixed-iteration patterns** handle variable workloads across multiple transactions
 - **Proposal flows** give users agency over adjusted terms while maintaining privacy
 

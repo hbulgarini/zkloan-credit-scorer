@@ -146,31 +146,42 @@ const result = pureCircuits.hash(myData);  // Direct call, no context
 
 ---
 
-## 5. The `disclose` Keyword - Privacy-by-Default
+## 5. Explicit Disclosure - Privacy by Default
 
-Compact enforces **explicit disclosure** of witness-derived data. You MUST wrap disclosed values:
+Compact requires **explicit disclosure** of witness-derived data—privacy by default means you must deliberately declare any data that will become public. You MUST wrap disclosed values with `disclose()`:
 
 ```compact
-// ERROR: Implicit disclosure
+// ERROR: Implicit disclosure - compiler rejects this
 ledger.value = getSecret();
 
-// CORRECT: Explicit disclosure
+// CORRECT: Explicit disclosure declared
 ledger.value = disclose(getSecret());
 
-// Also applies to derived values
-const derived = hash(getSecret());
+// Also applies to derived values - compiler tracks witness data flow
+const derived = persistentHash<Bytes<32>>(getSecret());
 ledger.hash = disclose(derived);  // Still requires disclose
 ```
 
-### What Requires Disclosure:
-1. Storing witness-derived data in ledger
-2. Returning witness-derived data from exported circuits
-3. Passing witness-derived data to cross-contract calls
-4. Comparisons that branch on witness data (discloses the comparison result)
+The `disclose()` wrapper doesn't cause disclosure itself—it's a conscious acknowledgment that you understand the value will become public when stored to ledger, returned from an exported circuit, or passed to another contract. Without it, the compiler rejects the code because privacy should be the default, and any potential exposure of witness data must be a deliberate choice by the programmer.
 
-### Safe Functions (No Disclosure Needed):
-- `transientCommit(value, randomness)` - if randomness is truly random
-- `persistentCommit(value, randomness)` - same condition
+### What Requires `disclose()`:
+1. Storing witness-derived data in the public ledger
+2. Returning witness-derived data from exported circuits
+3. Passing witness-derived data to another contract via cross-contract calls
+4. Comparisons involving witness data (the comparison result requires disclosure)
+
+### Safe Functions (No `disclose()` Needed):
+- `transientCommit(value, rand)` - if `rand` is sufficiently random
+- `persistentCommit(value, rand)` - same condition
+
+### Unsafe Functions (Still Require `disclose()`):
+- `transientHash(value)` - hashing alone is NOT sufficient to protect witness data
+- `persistentHash(value)` - same as transientHash
+
+### Best Practices:
+- Place `disclose()` as close to the disclosure point as possible
+- For structured values (tuples, vectors, structs), wrap only the portions containing witness data
+- If a witness always returns non-private or cryptographically protected data, disclose at the call site
 
 ---
 
@@ -347,8 +358,8 @@ export circuit apply(amount: Uint<16>): [] {
 
 Before deploying, verify:
 
-- [ ] **No raw witness data in ledger ops** - Always use `disclose()` intentionally
-- [ ] **No guessable hashes** - Use randomness (`persistentCommit`) for small value sets
+- [ ] **Explicit disclosure is intentional** - All `disclose()` calls are deliberate, not accidental
+- [ ] **No guessable hashes** - Use `persistentCommit` (not `persistentHash`) for small value sets
 - [ ] **Unlinkable actions** - Use round counters in public keys
 - [ ] **Domain separators** - Unique strings for each hash context to prevent cross-protocol attacks
 - [ ] **Input validation** - Assert bounds on all witness returns
@@ -451,3 +462,8 @@ export circuit requestLoan(...): [] {
 ---
 
 *Last updated: Based on Compact language version 0.19, compiler version 0.26.0*
+
+**References:**
+- [Explicit Disclosure](https://docs.midnight.network/develop/reference/compact/explicit_disclosure) - Official Midnight documentation
+- [Compact Standard Library](https://docs.midnight.network/develop/reference/compact/compact-std-library/exports) - API reference
+- [Midnight Academy Module 5](https://docs.midnight.network/academy/module-5) - Developer fundamentals

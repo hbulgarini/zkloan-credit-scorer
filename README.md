@@ -342,7 +342,7 @@ Design Decisions: This circuit is responsible for all interactions with the loan
 
 - Handling New Users: The if(!loans.member(requester)) check is crucial. Before attempting to add a loan, the circuit checks if the user has an existing entry in the outer map. If not, it first initializes their personal inner Map for loans, preventing errors.
 
-- Explicit Disclosure: The final disclose(loan) call is a critical part of the design. It signals to the compiler that the LoanApplication object, whose values were derived from the private evaluation, is now intentionally being made public by writing it to the ledger.
+- Explicit Disclosure: The final disclose(loan) call is a critical part of the design. The `disclose()` wrapper doesn't cause disclosure itself—it's a conscious acknowledgment that the LoanApplication object (derived from private evaluation) will become public when written to the ledger. Without this wrapper, the compiler would reject the code to prevent accidental exposure of witness data.
 
 - Proposal Flow Logic: The circuit now determines the final loan status based on whether the requested amount exceeds the user's eligible tier maximum. If `amountRequested > topTierAmount`, the loan enters `Proposed` status instead of being auto-approved at a reduced amount. This design gives users explicit control over accepting different terms than they originally requested.
 
@@ -416,7 +416,7 @@ Design Decisions: This circuit acts as the main entry point and orchestrator for
 
 - Safety Checks: It performs initial safety checks, such as verifying that the user is not on the blacklist and is not in the middle of a PIN change, ensuring the integrity of the system before proceeding with the more computationally expensive evaluation.
 
-- Managing Disclosure: This circuit is where the critical transition from private to public happens. It takes the private results from evaluateApplicant and explicitly marks them as public using disclose() before passing them to the createLoan circuit. This is the central point of control for the contract's privacy.
+- Managing Disclosure: This circuit is where the programmer consciously acknowledges what will become public. It takes the private results from evaluateApplicant and wraps them with `disclose()` to signal that these values are intentionally being passed to operations that will make them public (the createLoan circuit writes to the ledger). This is the central point of control for the contract's privacy—without these `disclose()` calls, the compiler would reject the code.
 
 
 #### changePin Circuit
