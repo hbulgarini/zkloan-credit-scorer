@@ -54,16 +54,43 @@ The local proof server is required to generate zero-knowledge proofs. Start it b
 # Typically runs on http://localhost:6300
 ```
 
-### 5. Deploy the Contract
+### 5. Build and Run the CLI
 
-Before users can interact with the DApp, the contract must be deployed to the Midnight network:
+The CLI is used to deploy contracts, request loans, and manage the DApp. First, build it:
 
 ```bash
-cd contract
-npm run deploy
+cd zkloan-credit-scorer-cli
+npm run build
 ```
 
-Save the contract address output - users will need it to connect via the UI.
+Then run the CLI connecting to the Midnight testnet:
+
+```bash
+npm run testnet-remote
+```
+
+This requires:
+- A wallet mnemonic (you'll be prompted, or set `WALLET_MNEMONIC` in `.env`)
+- tDUST tokens in your wallet (get from the [Midnight Faucet](https://faucet.preview.midnight.network/))
+
+#### CLI Interactive Menu
+
+Once running, the CLI presents an interactive menu:
+
+```
+1. Deploy a new ZKLoan Credit Scorer contract
+2. Join an existing ZKLoan Credit Scorer contract
+3. Exit
+```
+
+After deploying or joining, you can:
+- Request loans
+- Change PIN
+- Display contract state
+- Display wallet balances
+- Admin functions (blacklist users, transfer admin role)
+
+**Save the contract address** after deployment - users will need it to connect via the UI.
 
 ### 6. Build and Run the UI
 
