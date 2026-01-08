@@ -24,7 +24,7 @@
     "@midnight-ntwrk/midnight-js-network-id": "3.0.0-alpha.11",
     "@midnight-ntwrk/midnight-js-types": "3.0.0-alpha.11",
     "@midnight-ntwrk/zswap": "^4.0.0",
-    "@mui/icons-material": "^7.3.6",
+    "@mui/icons-material": "^7.3.7",
     "@mui/material": "^7.3.6",
     "buffer": "^6.0.3",
     "pino": "^10.1.0",
