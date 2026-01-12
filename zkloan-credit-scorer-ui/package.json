@@ -37,7 +37,7 @@
   "devDependencies": {
     "@originjs/vite-plugin-commonjs": "^1.0.3",
     "@rollup/plugin-inject": "^5.0.5",
-    "@types/react": "^19.2.2",
+    "@types/react": "^19.2.8",
     "@types/react-dom": "^19.2.3",
     "@types/semver": "^7.7.0",
     "@vitejs/plugin-react": "^5.1.2",
