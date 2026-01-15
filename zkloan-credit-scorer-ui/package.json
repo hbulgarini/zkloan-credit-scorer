@@ -27,7 +27,7 @@
     "@mui/icons-material": "^7.3.6",
     "@mui/material": "^7.3.6",
     "buffer": "^6.0.3",
-    "pino": "^10.1.0",
+    "pino": "^10.2.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.3",
     "rxjs": "^7.8.1",
