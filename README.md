@@ -10,11 +10,23 @@
 
 Before running this application, ensure you have the following installed:
 
-- **Node.js** (v18 or higher)
-- **npm** (v9 or higher)
+- **Node.js** (v22 or higher)
+- **npm** (v10 or higher)
 - **Midnight Lace Wallet** browser extension ([Download](https://midnight.network))
 - **Compact Compiler** (`compactc`) for building the contract
 - **Local Proof Server** running on your machine (required for generating ZK proofs)
+
+### Midnight SDK Versions
+
+This project uses the **stable** Midnight SDK (not alpha/beta):
+
+| Package | Version |
+|---------|---------|
+| `@midnight-ntwrk/midnight-js-*` | 3.0.0 |
+| `@midnight-ntwrk/ledger-v7` | 7.0.0 |
+| `@midnight-ntwrk/compact-js` | 2.4.0 |
+| `@midnight-ntwrk/compact-runtime` | 0.14.0 |
+| `@midnight-ntwrk/wallet-sdk-*` | 1.0.0 / 3.0.0 |
 
 ### 1. Clone and Install Dependencies
 
@@ -130,8 +142,15 @@ VITE_NETWORK_ID=TestNet  # or MainNet
 zkloan-credit-scorer/
 ├── contract/                    # Compact smart contract
 │   ├── src/
-│   │   └── zkloan-credit-scorer.compact
+│   │   ├── zkloan-credit-scorer.compact
+│   │   ├── witnesses.ts         # TypeScript witness implementations
+│   │   └── test/                # Contract tests
 │   └── dist/                    # Compiled output
+├── zkloan-credit-scorer-cli/    # Command-line interface
+│   └── src/
+│       ├── api.ts               # Contract deployment & interaction
+│       ├── config.ts            # Network configurations
+│       └── common-types.ts      # Shared type definitions
 ├── zkloan-credit-scorer-ui/     # React frontend
 │   ├── src/
 │   │   ├── components/          # UI components

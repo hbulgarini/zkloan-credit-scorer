@@ -14,10 +14,10 @@
 // limitations under the License.
 
 import { ZKLoanCreditScorer, type ZKLoanCreditScorerPrivateState } from 'zkloan-credit-scorer-contract';
-import type { ImpureCircuitId, MidnightProviders } from '@midnight-ntwrk/midnight-js-types';
+import type { MidnightProviders } from '@midnight-ntwrk/midnight-js-types';
 import type { DeployedContract, FoundContract } from '@midnight-ntwrk/midnight-js-contracts';
 
-export type ZKLoanCreditScorerCircuits = ImpureCircuitId<ZKLoanCreditScorer.Contract<ZKLoanCreditScorerPrivateState>>;
+export type ZKLoanCreditScorerCircuits = 'requestLoan' | 'changePin' | 'blacklistUser' | 'removeBlacklistUser' | 'transferAdmin' | 'respondToLoan';
 
 export const ZKLoanCreditScorerPrivateStateId = 'zkLoanCreditScorerPrivateState';
 

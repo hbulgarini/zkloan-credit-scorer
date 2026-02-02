@@ -16,7 +16,8 @@
 import 'dotenv/config';
 import { type ContractAddress } from '@midnight-ntwrk/compact-runtime';
 import { ZKLoanCreditScorer, type ZKLoanCreditScorerPrivateState, witnesses } from 'zkloan-credit-scorer-contract';
-import * as ledger from '@midnight-ntwrk/ledger-v6';
+import * as ledger from '@midnight-ntwrk/ledger-v7';
+import { CompiledContract } from '@midnight-ntwrk/compact-js';
 import { deployContract, findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
@@ -26,7 +27,7 @@ import {
   type FinalizedTxData,
   type MidnightProvider,
   type WalletProvider,
-  type BalancedProvingRecipe,
+  type UnboundTransaction,
 } from '@midnight-ntwrk/midnight-js-types';
 import { assertIsContractAddress } from '@midnight-ntwrk/midnight-js-utils';
 import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
@@ -56,6 +57,7 @@ import {
   type ZKLoanCreditScorerPrivateStateId,
   type ZKLoanCreditScorerProviders,
   type DeployedZKLoanCreditScorerContract,
+  type ZKLoanCreditScorerCircuits,
 } from './common-types';
 import { type Config, contractConfig } from './config';
 import { getUserProfile } from './state.utils';
@@ -84,20 +86,29 @@ export const getZKLoanLedgerState = async (
   return state;
 };
 
-export const zkLoanContractInstance: ZKLoanCreditScorerContract = new ZKLoanCreditScorer.Contract(witnesses);
+// Create compiled contract using the stable API pattern
+export const zkLoanCompiledContract = CompiledContract.make<ZKLoanCreditScorerContract>(
+  'ZKLoanCreditScorer',
+  ZKLoanCreditScorer.Contract
+).pipe(
+  CompiledContract.withWitnesses(witnesses),
+  CompiledContract.withCompiledFileAssets(contractConfig.zkConfigPath),
+);
 
 export const joinContract = async (
   providers: ZKLoanCreditScorerProviders,
   contractAddress: string,
 ): Promise<DeployedZKLoanCreditScorerContract> => {
-  const contract = await findDeployedContract(providers, {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const contract = await findDeployedContract(providers as any, {
     contractAddress,
-    contract: zkLoanContractInstance,
+    compiledContract: zkLoanCompiledContract,
     privateStateId: 'zkLoanCreditScorerPrivateState',
     initialPrivateState: getUserProfile(),
   });
   logger.info(`Joined contract at address: ${contract.deployTxData.public.contractAddress}`);
-  return contract;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return contract as any;
 };
 
 export const deploy = async (
@@ -105,13 +116,15 @@ export const deploy = async (
   privateState: ZKLoanCreditScorerPrivateState,
 ): Promise<DeployedZKLoanCreditScorerContract> => {
   logger.info('Deploying ZKLoan Credit Scorer contract...');
-  const contract = await deployContract(providers, {
-    contract: zkLoanContractInstance,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const contract = await deployContract(providers as any, {
+    compiledContract: zkLoanCompiledContract,
     privateStateId: 'zkLoanCreditScorerPrivateState',
     initialPrivateState: privateState,
   });
   logger.info(`Deployed contract at address: ${contract.deployTxData.public.contractAddress}`);
-  return contract;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return contract as any;
 };
 
 // ZKLoan-specific operations
@@ -185,7 +198,7 @@ export const displayContractState = async (
 };
 
 /**
- * Create wallet and midnight provider from the new WalletFacade
+ * Create wallet and midnight provider from WalletFacade using stable API
  */
 export const createWalletAndMidnightProvider = async (
   walletContext: WalletContext,
@@ -197,27 +210,34 @@ export const createWalletAndMidnightProvider = async (
 
   return {
     getCoinPublicKey(): ledger.CoinPublicKey {
-      return walletContext.shieldedSecretKeys.coinPublicKey as unknown as ledger.CoinPublicKey;
+      return walletContext.shieldedSecretKeys.coinPublicKey;
     },
+
     getEncryptionPublicKey(): ledger.EncPublicKey {
-      return walletContext.shieldedSecretKeys.encryptionPublicKey as unknown as ledger.EncPublicKey;
+      return walletContext.shieldedSecretKeys.encryptionPublicKey;
     },
+
     async balanceTx(
-      tx: ledger.UnprovenTransaction,
-      newCoins?: ledger.ShieldedCoinInfo[],
+      tx: UnboundTransaction,
       ttl?: Date,
-    ): Promise<BalancedProvingRecipe> {
-      // Use the wallet facade to balance the transaction
+    ): Promise<ledger.FinalizedTransaction> {
       const txTtl = ttl ?? new Date(Date.now() + 30 * 60 * 1000); // 30 min default TTL
-      // balanceTransaction returns a ProvingRecipe directly
-      const provingRecipe = await walletContext.wallet.balanceTransaction(
-        walletContext.shieldedSecretKeys,
-        walletContext.dustSecretKey,
-        tx as unknown as ledger.Transaction<ledger.SignatureEnabled, ledger.Proofish, ledger.Bindingish>,
-        txTtl,
+
+      // Use the wallet facade to balance the unbound (proven) transaction
+      const recipe = await walletContext.wallet.balanceUnboundTransaction(
+        tx,
+        {
+          shieldedSecretKeys: walletContext.shieldedSecretKeys,
+          dustSecretKey: walletContext.dustSecretKey,
+        },
+        { ttl: txTtl },
       );
-      return provingRecipe as unknown as BalancedProvingRecipe;
+
+      // Finalize the recipe to get the final transaction
+      const finalizedTx = await walletContext.wallet.finalizeRecipe(recipe);
+      return finalizedTx;
     },
+
     async submitTx(tx: ledger.FinalizedTransaction): Promise<ledger.TransactionId> {
       return await walletContext.wallet.submitTransaction(tx);
     },
@@ -299,7 +319,7 @@ export const registerNightForDust = async (walletContext: WalletContext): Promis
     );
 
     logger.info('Finalizing dust registration transaction...');
-    const finalizedTx = await walletContext.wallet.finalizeTransaction(recipe);
+    const finalizedTx = await walletContext.wallet.finalizeRecipe(recipe);
 
     logger.info('Submitting dust registration transaction...');
     const txId = await walletContext.wallet.submitTransaction(finalizedTx);
@@ -481,7 +501,7 @@ export const buildWalletFromHexSeed = async (
   return walletContext;
 };
 
-export const configureProviders = async (walletContext: WalletContext, config: Config) => {
+export const configureProviders = async (walletContext: WalletContext, config: Config): Promise<ZKLoanCreditScorerProviders> => {
   // Set global network ID - required before contract deployment
   setNetworkId(config.networkId);
 
@@ -490,14 +510,16 @@ export const configureProviders = async (walletContext: WalletContext, config: C
   // Get storage password from env or use a default
   const storagePassword = process.env.MIDNIGHT_STORAGE_PASSWORD ?? 'zkloan-credit-scorer-default-password';
 
+  const zkConfigProvider = new NodeZkConfigProvider<ZKLoanCreditScorerCircuits>(contractConfig.zkConfigPath);
+
   return {
     privateStateProvider: levelPrivateStateProvider<typeof ZKLoanCreditScorerPrivateStateId>({
       privateStateStoreName: contractConfig.privateStateStoreName,
       privateStoragePasswordProvider: () => storagePassword,
     }),
     publicDataProvider: indexerPublicDataProvider(config.indexer, config.indexerWS),
-    zkConfigProvider: new NodeZkConfigProvider<'requestLoan' | 'changePin' | 'blacklistUser' | 'removeBlacklistUser' | 'transferAdmin'>(contractConfig.zkConfigPath),
-    proofProvider: httpClientProofProvider(config.proofServer),
+    zkConfigProvider,
+    proofProvider: httpClientProofProvider(config.proofServer, zkConfigProvider),
     walletProvider: walletAndMidnightProvider,
     midnightProvider: walletAndMidnightProvider,
   };

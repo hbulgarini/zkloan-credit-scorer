@@ -25,7 +25,7 @@ import path from 'path';
 import * as api from '../api';
 import type { WalletContext } from '../api';
 import * as Rx from 'rxjs';
-import * as ledger from '@midnight-ntwrk/ledger-v6';
+import * as ledger from '@midnight-ntwrk/ledger-v7';
 import type { Logger } from 'pino';
 import { expect } from 'vitest';
 

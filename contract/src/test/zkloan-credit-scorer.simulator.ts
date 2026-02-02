@@ -25,8 +25,8 @@ import {
   ledger
 } from "../managed/zkloan-credit-scorer/contract/index.js";
 import { type ZKLoanCreditScorerPrivateState, witnesses } from "../witnesses.js";
-import {createEitherTestUser} from "./utils/address.js";
-import {getUserProfile} from "../../../zkloan-credit-scorer-cli/src/state.utils.js";
+import { createEitherTestUser } from "./utils/address.js";
+import { getUserProfile } from "./utils/test-data.js";
 
 
 // This is over-kill for such a simple contract, but the same pattern can be used to test more

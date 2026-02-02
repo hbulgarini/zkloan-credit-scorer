@@ -359,6 +359,30 @@ The ZK proof guarantees the private inputs satisfy the public outputs. A verifie
 
 ---
 
+## TypeScript Integration
+
+While Compact handles the ZK circuits, the TypeScript SDK connects your dApp to the blockchain. The stable SDK (v3.0.0+) uses a `CompiledContract` pattern that bundles your contract, witnesses, and ZK assets:
+
+```typescript
+import { CompiledContract } from '@midnight-ntwrk/compact-js';
+import { deployContract } from '@midnight-ntwrk/midnight-js-contracts';
+
+const zkLoanContract = CompiledContract.make('ZKLoanCreditScorer', Contract).pipe(
+  CompiledContract.withWitnesses(witnesses),
+  CompiledContract.withCompiledFileAssets(zkConfigPath),
+);
+
+const deployed = await deployContract(providers, {
+  compiledContract: zkLoanContract,
+  privateStateId: 'zkLoanCreditScorerPrivateState',
+  initialPrivateState,
+});
+```
+
+The `WalletProvider` interface handles transaction balancing—taking proven transactions and adding the necessary coin inputs/outputs before submission.
+
+---
+
 ## Conclusion
 
 Midnight and Compact enable a new category of applications: privacy-preserving smart contracts with the security guarantees of zero-knowledge proofs. While ZKLoan Credit Scorer uses a simplified lending scenario for demonstration, it showcases how sensitive financial operations can happen on-chain without exposing sensitive data—a pattern applicable to real-world use cases with proper business logic.
@@ -370,6 +394,7 @@ Key takeaways:
 - **Explicit disclosure** with `disclose` controls exactly what becomes public
 - **Fixed-iteration patterns** handle variable workloads across multiple transactions
 - **Proposal flows** give users agency over adjusted terms while maintaining privacy
+- **CompiledContract pattern** bundles contracts, witnesses, and ZK assets for the TypeScript SDK
 
 The patterns shown here—pseudonymous identity derivation, batched state migration, private rule evaluation, and user-controlled proposal acceptance—are building blocks for a wide range of privacy-preserving applications.
 
