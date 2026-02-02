@@ -1,8 +1,5 @@
-import {
-  convert_bigint_to_Uint8Array,
-  encodeCoinPublicKey,
-} from '@midnight-ntwrk/compact-runtime';
-import { encodeContractAddress } from '@midnight-ntwrk/ledger-v6';
+import { encodeCoinPublicKey } from '@midnight-ntwrk/compact-runtime';
+import { encodeContractAddress } from '@midnight-ntwrk/ledger-v7';
 import type * as Compact from '../../managed/zkloan-credit-scorer/contract/index.js';
 
 /**

@@ -1,7 +1,7 @@
 import React, { type PropsWithChildren, createContext, useState, useCallback, useMemo, useEffect } from 'react';
 import { Buffer } from 'buffer';
-import { type ContractAddress, fromHex, toHex } from '@midnight-ntwrk/compact-runtime';
-import * as ledger from '@midnight-ntwrk/ledger-v6';
+import { type ContractAddress } from '@midnight-ntwrk/compact-runtime';
+import * as ledger from '@midnight-ntwrk/ledger-v7';
 import {
   BehaviorSubject,
   type Observable,
@@ -23,19 +23,23 @@ import {
   type Configuration,
 } from '@midnight-ntwrk/dapp-connector-api';
 import {
-  type BalancedProvingRecipe,
   type MidnightProvider,
   type WalletProvider,
+  type ZKConfigProvider,
 } from '@midnight-ntwrk/midnight-js-types';
 import { FetchZkConfigProvider } from '@midnight-ntwrk/midnight-js-fetch-zk-config-provider';
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
 import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { deployContract, findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
+import { CompiledContract } from '@midnight-ntwrk/compact-js';
 import { ZKLoanCreditScorer, witnesses, type ZKLoanCreditScorerPrivateState } from 'zkloan-credit-scorer-contract';
+
+// Type for the ZKLoan contract
+type ZKLoanCreditScorerContract = ZKLoanCreditScorer.Contract<ZKLoanCreditScorerPrivateState>;
 import { saveLoanProfile } from '../utils/loanProfiles';
 
-export type ZKLoanCircuitKeys = 'requestLoan' | 'changePin' | 'blacklistUser' | 'removeBlacklistUser' | 'transferAdmin';
+export type ZKLoanCircuitKeys = 'requestLoan' | 'changePin' | 'blacklistUser' | 'removeBlacklistUser' | 'transferAdmin' | 'respondToLoan';
 
 // Re-export loan types for components
 export type LoanStatus = 'Approved' | 'Rejected' | 'Proposed' | 'NotAccepted';
@@ -101,6 +105,20 @@ export type ZKLoanProviderProps = PropsWithChildren<{
 }>;
 
 const NETWORK_ID = import.meta.env.VITE_NETWORK_ID || 'TestNet';
+
+// Helper functions for hex conversion
+function uint8ArrayToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function hexToUint8Array(hex: string): Uint8Array {
+  const cleaned = hex.replace(/^0x/, '');
+  const matches = cleaned.match(/.{1,2}/g);
+  if (!matches) return new Uint8Array();
+  return new Uint8Array(matches.map((byte) => parseInt(byte, 16)));
+}
 
 // In-memory private state provider (simpler than level for browser)
 function inMemoryPrivateStateProvider<K extends string, V>() {
@@ -252,56 +270,59 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
     }
 
     // ZK config provider - fetches prover/verifier keys
-    const zkConfigProvider = new FetchZkConfigProvider<ZKLoanCircuitKeys>(zkConfigPath, fetch.bind(window));
+    const zkConfigProvider: ZKConfigProvider<ZKLoanCircuitKeys> = new FetchZkConfigProvider<ZKLoanCircuitKeys>(zkConfigPath, fetch.bind(window));
 
-    // Proof provider - uses remote proof server (this is the key difference!)
-    const proofProvider = httpClientProofProvider<ZKLoanCircuitKeys>(config.proverServerUri);
+    // Proof provider - uses remote proof server
+    const proofProvider = httpClientProofProvider(config.proverServerUri, zkConfigProvider);
 
     // Public data provider - indexer for blockchain queries
     const publicDataProvider = indexerPublicDataProvider(config.indexerUri, config.indexerWsUri);
 
-    // Wallet provider - handles transaction balancing via Lace wallet
+    // Wallet provider using the stable API
+    // For browser wallet, we need to use the wallet's balancing capabilities
+    const coinPkBytes = typeof addresses.shieldedCoinPublicKey === 'string'
+      ? new Uint8Array(Buffer.from(addresses.shieldedCoinPublicKey, 'hex'))
+      : new Uint8Array(addresses.shieldedCoinPublicKey as ArrayBuffer);
+
     const walletProvider: WalletProvider = {
       getCoinPublicKey(): ledger.CoinPublicKey {
-        return addresses.shieldedCoinPublicKey as unknown as ledger.CoinPublicKey;
+        // Return the coin public key from wallet addresses
+        return coinPkBytes as unknown as ledger.CoinPublicKey;
       },
+
       getEncryptionPublicKey(): ledger.EncPublicKey {
-        return addresses.shieldedEncryptionPublicKey as unknown as ledger.EncPublicKey;
+        // Return encryption public key from wallet (derived from coin public key in browser context)
+        return coinPkBytes as unknown as ledger.EncPublicKey;
       },
+
       async balanceTx(
-        tx: ledger.UnprovenTransaction,
-        _newCoins?: unknown[],
-        _ttl?: Date
-      ): Promise<BalancedProvingRecipe> {
+        tx: ledger.Transaction<ledger.SignatureEnabled, ledger.Proof, ledger.PreBinding>,
+        _ttl?: Date,
+      ): Promise<ledger.FinalizedTransaction> {
         try {
           setFlowMessage('Signing the transaction with Midnight Lace wallet...');
-          logger.info('Balancing transaction via wallet');
+          logger.info('Balancing proven (unsealed) transaction via wallet');
 
-          // Serialize the unproven transaction
-          const serializedTx = toHex(tx.serialize());
+          // Serialize the proven but unsealed (unbound) transaction
+          const serialized = tx.serialize();
+          const serializedStr = uint8ArrayToHex(serialized);
 
           // Call wallet to balance the unsealed transaction
-          const received = await wallet.balanceUnsealedTransaction(serializedTx);
+          // This takes Transaction<SignatureEnabled, Proof, PreBinding> and returns a balanced/finalized tx
+          const result = await wallet.balanceUnsealedTransaction(serializedStr);
 
-          // Deserialize the balanced transaction
-          const transaction = ledger.Transaction.deserialize<
-            ledger.SignatureEnabled,
-            ledger.PreProof,
-            ledger.PreBinding
-          >(
+          // Deserialize the balanced and finalized transaction
+          const resultBytes = hexToUint8Array(result.tx);
+          const finalizedTx = ledger.Transaction.deserialize(
             'signature',
-            'pre-proof',
-            'pre-binding',
-            fromHex(received.tx)
-          );
+            'proof',
+            'binding',
+            resultBytes
+          ) as ledger.FinalizedTransaction;
 
           setFlowMessage(undefined);
 
-          // Return as TransactionToProve - will be proven by proofProvider
-          return {
-            type: 'TransactionToProve',
-            transaction: transaction,
-          };
+          return finalizedTx;
         } catch (e) {
           setFlowMessage(undefined);
           logger.error({ error: e }, 'Error balancing transaction via wallet');
@@ -316,7 +337,9 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
         setFlowMessage('Submitting transaction...');
         logger.info('Submitting transaction via wallet');
 
-        await wallet.submitTransaction(toHex(tx.serialize()));
+        const serialized = tx.serialize();
+        const serializedStr = uint8ArrayToHex(serialized);
+        await wallet.submitTransaction(serializedStr);
 
         const txIdentifiers = tx.identifiers();
         const txId = txIdentifiers[0];
@@ -350,11 +373,19 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
       setFlowMessage('Deploying ZKLoan Credit Scorer contract...');
       logger.info('Deploying ZKLoan Credit Scorer contract...');
 
-      const zkLoanContract = new ZKLoanCreditScorer.Contract(witnesses);
+      // Create compiled contract using the stable API pattern
+      const zkConfigPath = window.location.origin;
+      const zkLoanCompiledContract = CompiledContract.make<ZKLoanCreditScorerContract>(
+        'ZKLoanCreditScorer',
+        ZKLoanCreditScorer.Contract
+      ).pipe(
+        CompiledContract.withWitnesses(witnesses),
+        CompiledContract.withCompiledFileAssets(zkConfigPath),
+      );
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const deployed = await deployContract(providers as any, {
-        contract: zkLoanContract,
+        compiledContract: zkLoanCompiledContract,
         privateStateId: 'zkLoanCreditScorerPrivateState',
         initialPrivateState: privateState,
       });
@@ -394,12 +425,20 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
       setFlowMessage('Joining contract...');
       logger.info({ contractAddress }, 'Joining contract...');
 
-      const zkLoanContract = new ZKLoanCreditScorer.Contract(witnesses);
+      // Create compiled contract using the stable API pattern
+      const zkConfigPath = window.location.origin;
+      const zkLoanCompiledContract = CompiledContract.make<ZKLoanCreditScorerContract>(
+        'ZKLoanCreditScorer',
+        ZKLoanCreditScorer.Contract
+      ).pipe(
+        CompiledContract.withWitnesses(witnesses),
+        CompiledContract.withCompiledFileAssets(zkConfigPath),
+      );
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const joined = await findDeployedContract(providers as any, {
         contractAddress,
-        contract: zkLoanContract,
+        compiledContract: zkLoanCompiledContract,
         privateStateId: 'zkLoanCreditScorerPrivateState',
         initialPrivateState: privateState,
       });
