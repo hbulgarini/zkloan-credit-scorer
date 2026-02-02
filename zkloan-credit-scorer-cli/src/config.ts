@@ -57,5 +57,16 @@ export class PreviewConfig implements Config {
   networkId = 'preview';
 }
 
+export class PreprodConfig implements Config {
+  logDir = path.resolve(currentDir, '..', 'logs', 'preprod', `${new Date().toISOString()}.log`);
+  // TODO: Update these values when preprod endpoints are available
+  // For now using preview endpoints, so networkId must match
+  indexer = 'https://indexer.preprod.midnight.network/api/v3/graphql';
+  indexerWS = 'wss://indexer.preprod.midnight.network/api/v3/graphql/ws';
+  node = 'wss://rpc.preprod.midnight.network';
+  proofServer = 'http://127.0.0.1:6300';
+  networkId = 'preprod'; // Must match the indexer network until preprod endpoints are available
+}
+
 // Alias for backwards compatibility
 export class TestnetRemoteConfig extends PreviewConfig {}
