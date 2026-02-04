@@ -389,31 +389,51 @@ export const initWalletWithSeed = async (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const unshieldedKeystore = createKeystore(derivationResult.keys[Roles.NightExternal], config.networkId as any);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const walletConfiguration: any = {
+  // Separate configurations for each wallet type (matching example-counter pattern)
+  // Convert http:// to ws:// for relay URL (wallet SDK expects WebSocket)
+  const relayURL = new URL(config.node.replace(/^http/, 'ws'));
+
+  const shieldedConfig = {
     networkId: config.networkId,
-    costParameters: {
-      additionalFeeOverhead: 300_000_000_000_000n, // 300 trillion - matches SDK examples
-      feeBlocksMargin: 5,
-    },
-    relayURL: new URL(config.node),
-    provingServerUrl: new URL(config.proofServer),
     indexerClientConnection: {
       indexerHttpUrl: config.indexer,
       indexerWsUrl: config.indexerWS,
     },
-    indexerUrl: config.indexerWS,
+    provingServerUrl: new URL(config.proofServer),
+    relayURL,
   };
 
-  const shieldedWallet = ShieldedWallet(walletConfiguration).startWithSecretKeys(shieldedSecretKeys);
-  const dustWallet = DustWallet(walletConfiguration).startWithSecretKey(
+  const unshieldedConfig = {
+    networkId: config.networkId,
+    indexerClientConnection: {
+      indexerHttpUrl: config.indexer,
+      indexerWsUrl: config.indexerWS,
+    },
+    txHistoryStorage: new InMemoryTransactionHistoryStorage(),
+  };
+
+  const dustConfig = {
+    networkId: config.networkId,
+    costParameters: {
+      additionalFeeOverhead: 300_000_000_000_000n,
+      feeBlocksMargin: 5,
+    },
+    indexerClientConnection: {
+      indexerHttpUrl: config.indexer,
+      indexerWsUrl: config.indexerWS,
+    },
+    provingServerUrl: new URL(config.proofServer),
+    relayURL,
+  };
+
+  const shieldedWallet = ShieldedWallet(shieldedConfig).startWithSecretKeys(shieldedSecretKeys);
+  const unshieldedWallet = UnshieldedWallet(unshieldedConfig).startWithPublicKey(
+    UnshieldedPublicKey.fromKeyStore(unshieldedKeystore),
+  );
+  const dustWallet = DustWallet(dustConfig).startWithSecretKey(
     dustSecretKey,
     ledger.LedgerParameters.initialParameters().dust,
   );
-  const unshieldedWallet = UnshieldedWallet({
-    ...walletConfiguration,
-    txHistoryStorage: new InMemoryTransactionHistoryStorage(),
-  }).startWithPublicKey(UnshieldedPublicKey.fromKeyStore(unshieldedKeystore));
 
   const facade: WalletFacade = new WalletFacade(shieldedWallet, unshieldedWallet, dustWallet);
   await facade.start(shieldedSecretKeys, dustSecretKey);
