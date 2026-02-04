@@ -104,7 +104,7 @@ export type ZKLoanProviderProps = PropsWithChildren<{
   logger: Logger;
 }>;
 
-const NETWORK_ID = import.meta.env.VITE_NETWORK_ID || 'TestNet';
+const NETWORK_ID = import.meta.env.VITE_NETWORK_ID || 'preprod';
 
 // Helper functions for hex conversion
 function uint8ArrayToHex(bytes: Uint8Array): string {
@@ -258,6 +258,9 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
         ? new Uint8Array(Buffer.from(addresses.shieldedCoinPublicKey, 'hex'))
         : new Uint8Array(addresses.shieldedCoinPublicKey as ArrayBuffer);
       setWalletPublicKeyBytes(coinPkBytes);
+      logger.info({ coinPkBytesLength: coinPkBytes.length }, 'Stored coin public key bytes');
+    } else {
+      logger.warn('No shieldedCoinPublicKey received from wallet');
     }
 
     logger.info({
@@ -280,19 +283,23 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
 
     // Wallet provider using the stable API
     // For browser wallet, we need to use the wallet's balancing capabilities
-    const coinPkBytes = typeof addresses.shieldedCoinPublicKey === 'string'
-      ? new Uint8Array(Buffer.from(addresses.shieldedCoinPublicKey, 'hex'))
-      : new Uint8Array(addresses.shieldedCoinPublicKey as ArrayBuffer);
+    logger.info({ addresses }, 'Wallet addresses received');
 
+    if (!addresses.shieldedCoinPublicKey || !addresses.shieldedEncryptionPublicKey) {
+      throw new Error('Wallet did not provide shieldedCoinPublicKey or shieldedEncryptionPublicKey');
+    }
+
+    // Wallet connector returns addresses in Bech32m format (strings)
+    // CoinPublicKey and EncPublicKey types are also strings
     const walletProvider: WalletProvider = {
       getCoinPublicKey(): ledger.CoinPublicKey {
-        // Return the coin public key from wallet addresses
-        return coinPkBytes as unknown as ledger.CoinPublicKey;
+        // Return the coin public key directly as bech32 string
+        return addresses.shieldedCoinPublicKey as ledger.CoinPublicKey;
       },
 
       getEncryptionPublicKey(): ledger.EncPublicKey {
-        // Return encryption public key from wallet (derived from coin public key in browser context)
-        return coinPkBytes as unknown as ledger.EncPublicKey;
+        // Return the encryption public key directly as bech32 string
+        return addresses.shieldedEncryptionPublicKey as ledger.EncPublicKey;
       },
 
       async balanceTx(
