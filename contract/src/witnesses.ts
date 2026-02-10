@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Ledger } from "./managed/zkloan-credit-scorer/contract/index.js";
+import { Ledger, SchnorrSignature } from "./managed/zkloan-credit-scorer/contract/index.js";
 import { WitnessContext } from "@midnight-ntwrk/compact-runtime";
 
 
@@ -21,20 +21,42 @@ export type ZKLoanCreditScorerPrivateState = {
   creditScore: bigint;
   monthlyIncome: bigint;
   monthsAsCustomer: bigint;
+  attestationSignature: SchnorrSignature;
+  attestationProviderId: bigint;
 };
 
+const TWO_248 = 452312848583266388373324160190187140051835877600158453279131187530910662656n;
+
 export const witnesses = {
-  getRequesterScoringWitness: ({
+  getAttestedScoringWitness: ({
     privateState
   }: WitnessContext<Ledger, ZKLoanCreditScorerPrivateState>): [
     ZKLoanCreditScorerPrivateState,
-    ZKLoanCreditScorerPrivateState,
+    [
+      { creditScore: bigint; monthlyIncome: bigint; monthsAsCustomer: bigint },
+      SchnorrSignature,
+      bigint,
+    ],
   ] => [
     privateState,
-    {
-      creditScore: privateState.creditScore,
-      monthlyIncome: privateState.monthlyIncome,
-      monthsAsCustomer: privateState.monthsAsCustomer,
-    },
+    [
+      {
+        creditScore: privateState.creditScore,
+        monthlyIncome: privateState.monthlyIncome,
+        monthsAsCustomer: privateState.monthsAsCustomer,
+      },
+      privateState.attestationSignature,
+      privateState.attestationProviderId,
+    ],
   ],
+
+  getSchnorrReduction: ({
+    privateState
+  }: WitnessContext<Ledger, ZKLoanCreditScorerPrivateState>,
+    challengeHash: bigint,
+  ): [ZKLoanCreditScorerPrivateState, [bigint, bigint]] => {
+    const q = challengeHash / TWO_248;
+    const r = challengeHash % TWO_248;
+    return [privateState, [q, r]];
+  },
 };

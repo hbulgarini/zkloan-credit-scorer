@@ -13,6 +13,11 @@
       "require": "./dist/index.js",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./managed/zkloan-credit-scorer/contract": {
+      "types": "./dist/managed/zkloan-credit-scorer/contract/index.d.ts",
+      "import": "./dist/managed/zkloan-credit-scorer/contract/index.js",
+      "default": "./dist/managed/zkloan-credit-scorer/contract/index.js"
     }
   },
   "scripts": {
