@@ -9,7 +9,8 @@
   "workspaces": [
     "zkloan-credit-scorer-cli",
     "zkloan-credit-scorer-ui",
-    "contract"
+    "contract",
+    "zkloan-credit-scorer-attestation-api"
   ],
   "devDependencies": {
     "@eslint/js": "^9.39.1",

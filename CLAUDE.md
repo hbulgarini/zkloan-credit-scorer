@@ -408,11 +408,35 @@ describe('MyContract', () => {
 
 ## 12. This Project's Specific Patterns
 
-### Credit Scoring Flow
-1. User calls `requestLoan(amount, secretPin)`
-2. Witness `getRequesterScoringWitness()` returns private `Applicant` data
-3. `evaluateApplicant()` computes tier locally (private)
-4. Only `topTierAmount` and `status` are disclosed to ledger
+### Credit Scoring Flow (with Attestation)
+1. Off-chain: Trusted attestation provider signs `[creditScore, monthlyIncome, monthsAsCustomer, userPubKeyHash]` using Schnorr signatures on the Jubjub curve
+2. User calls `requestLoan(amount, secretPin)`
+3. Witness `getAttestedScoringWitness()` returns private `[Applicant, SchnorrSignature, providerId]`
+4. Circuit verifies the provider is registered on-chain (`providers` map)
+5. Circuit verifies the Schnorr signature matches the credit data + user binding
+6. `evaluateApplicant()` computes tier locally (private)
+7. Only `topTierAmount` and `status` are disclosed to ledger
+
+### Schnorr Signature Polyfill
+The contract includes a polyfill for `jubjubSchnorrVerify` (not yet in the Compact standard library). Key implementation details:
+- `schnorrVerify<#n>()`: Verifies `G*s == R + P*c` using `ecMulGenerator`, `ecMul`, `ecAdd`
+- `schnorrChallenge()`: Pure circuit that computes the challenge hash (used by both contract and API)
+- **248-bit truncation**: `transientHash` returns BLS12-381 Field values (~255 bits), but `ecMul` requires Jubjub scalars (<252 bits). The challenge is truncated to 248 bits via witness-assisted division by 2^248.
+- `getSchnorrReduction` witness provides `(q, r)` such that `hash = q * 2^248 + r` where `r : Uint<248>`
+
+### Provider Registry
+```compact
+export ledger providers: Map<Uint<16>, NativePoint>;
+export circuit registerProvider(providerId: Uint<16>, providerPk: NativePoint): []
+export circuit removeProvider(providerId: Uint<16>): []
+```
+
+### Attestation API (`zkloan-credit-scorer-attestation-api/`)
+- `POST /attest` — Signs credit data for a specific user (bound by `userPubKeyHash`)
+- `GET /provider-info` — Returns provider's public key and ID
+- `GET /health` — Health check
+- Uses `pureCircuits.schnorrChallenge()` from the compiled contract to ensure hash compatibility
+- Environment: `PROVIDER_SECRET_KEY` (hex), `PROVIDER_ID` (default: 1), `PORT` (default: 3000)
 
 ### PIN-Based Identity
 ```compact

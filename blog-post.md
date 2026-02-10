@@ -383,6 +383,24 @@ The `WalletProvider` interface handles transaction balancing—taking proven tra
 
 ---
 
+## Cryptographic Attestation with Schnorr Signatures
+
+A critical question for any privacy-preserving system: how do you trust the private data? Without attestation, a malicious DApp could feed fabricated credit scores to the witness, bypassing the entire evaluation logic. ZKLoan solves this with a Schnorr signature scheme on the Jubjub curve.
+
+### The Pattern: Off-Chain Signing, In-Circuit Verification
+
+A trusted attestation provider signs the user's credit data off-chain. The smart contract then verifies this signature *inside the ZK circuit* before processing the loan. The signature itself stays private (it comes through the witness, not as a public parameter), which prevents brute-forcing the small credit score values from public signature data.
+
+The signed message includes a `userPubKeyHash` that binds the attestation to a specific user, preventing replay attacks where one user's attestation could be used by another.
+
+### Polyfilling Schnorr Verification
+
+The Compact standard library will include `jubjubSchnorrVerify` in a future release. Until then, the contract implements a polyfill using existing primitives (`ecMulGenerator`, `ecMul`, `ecAdd`, `transientHash`). One subtlety: `transientHash` returns BLS12-381 Field values (~255 bits), but Jubjub EC operations require scalars under the subgroup order (~252 bits). The contract handles this through witness-assisted 248-bit truncation.
+
+### Matching Hash Computation
+
+The attestation API imports `pureCircuits.schnorrChallenge()` directly from the compiled contract. This guarantees the challenge hash is computed identically on both sides, eliminating a common source of signature verification bugs.
+
 ## Conclusion
 
 Midnight and Compact enable a new category of applications: privacy-preserving smart contracts with the security guarantees of zero-knowledge proofs. While ZKLoan Credit Scorer uses a simplified lending scenario for demonstration, it showcases how sensitive financial operations can happen on-chain without exposing sensitive data—a pattern applicable to real-world use cases with proper business logic.
@@ -395,8 +413,10 @@ Key takeaways:
 - **Fixed-iteration patterns** handle variable workloads across multiple transactions
 - **Proposal flows** give users agency over adjusted terms while maintaining privacy
 - **CompiledContract pattern** bundles contracts, witnesses, and ZK assets for the TypeScript SDK
+- **Schnorr attestation** prevents fabricated credit data through in-circuit signature verification
+- **User binding** in signed messages prevents cross-user replay attacks
 
-The patterns shown here—pseudonymous identity derivation, batched state migration, private rule evaluation, and user-controlled proposal acceptance—are building blocks for a wide range of privacy-preserving applications.
+The patterns shown here—pseudonymous identity derivation, batched state migration, private rule evaluation, user-controlled proposal acceptance, and cryptographic attestation—are building blocks for a wide range of privacy-preserving applications.
 
 Ready to explore further? Check out the [ZKLoan Credit Scorer repository](https://github.com/midnight/zkloan-credit-scorer) to run the CLI, examine the tests, and experiment with the Compact contract yourself.
 

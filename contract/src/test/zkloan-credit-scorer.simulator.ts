@@ -17,28 +17,48 @@ import {
   type CircuitContext,
   createConstructorContext,
   createCircuitContext,
-  sampleContractAddress
+  sampleContractAddress,
+  type NativePoint,
+  transientHash,
+  CompactTypeBytes,
 } from "@midnight-ntwrk/compact-runtime";
 import {
   Contract,
   type Ledger,
-  ledger
+  ledger,
+  pureCircuits
 } from "../managed/zkloan-credit-scorer/contract/index.js";
 import { type ZKLoanCreditScorerPrivateState, witnesses } from "../witnesses.js";
 import { createEitherTestUser } from "./utils/address.js";
-import { getUserProfile } from "./utils/test-data.js";
+import { createSignedUserProfile, generateProviderKeyPair } from "./utils/test-data.js";
 
+const bytes32Type = new CompactTypeBytes(32);
 
-// This is over-kill for such a simple contract, but the same pattern can be used to test more
-// complex contracts.
 export class ZKLoanCreditScorerSimulator {
   readonly contract: Contract<ZKLoanCreditScorerPrivateState>;
   circuitContext: CircuitContext<ZKLoanCreditScorerPrivateState>;
+  readonly providerSk: bigint;
+  readonly providerPk: NativePoint;
+  readonly providerId: bigint = 1n;
 
   constructor() {
     const user = createEitherTestUser("Alice");
     this.contract = new Contract<ZKLoanCreditScorerPrivateState>(witnesses);
-    const initialPrivateState: ZKLoanCreditScorerPrivateState = getUserProfile(0);
+
+    // Generate provider key pair
+    const keyPair = generateProviderKeyPair();
+    this.providerSk = keyPair.sk;
+    this.providerPk = keyPair.pk;
+
+    // Create initial private state with attestation for user profile 0
+    const userPubKeyHash = this.computeUserPubKeyHash(user.left.bytes, 1234n);
+    const initialPrivateState: ZKLoanCreditScorerPrivateState = createSignedUserProfile(
+      0,
+      this.providerSk,
+      userPubKeyHash,
+      this.providerId,
+    );
+
     const {
       currentPrivateState,
       currentContractState,
@@ -52,6 +72,14 @@ export class ZKLoanCreditScorerSimulator {
       currentContractState,
       currentPrivateState
     );
+
+    // Register the default provider
+    this.registerProvider(this.providerId, this.providerPk);
+  }
+
+  public computeUserPubKeyHash(userZwapKeyBytes: Uint8Array, pin: bigint): bigint {
+    const pubKey = pureCircuits.publicKey(userZwapKeyBytes, pin);
+    return transientHash(bytes32Type, pubKey);
   }
 
   public getLedger(): Ledger {
@@ -63,7 +91,6 @@ export class ZKLoanCreditScorerSimulator {
   }
 
   public requestLoan(amountRequested: bigint, secretPin: bigint): Ledger {
-    // Update the current context to be the result of executing the circuit.
     this.circuitContext = this.contract.impureCircuits.requestLoan(
       this.circuitContext,
       amountRequested,
@@ -73,7 +100,6 @@ export class ZKLoanCreditScorerSimulator {
   }
 
   public blacklistUser(account: Uint8Array): Ledger {
-    // Update the current context to be the result of executing the circuit.
     this.circuitContext = this.contract.impureCircuits.blacklistUser(
       this.circuitContext,
       { bytes: account }
@@ -82,7 +108,6 @@ export class ZKLoanCreditScorerSimulator {
   }
 
   public removeBlacklistUser(account: Uint8Array): Ledger {
-    // Update the current context to be the result of executing the circuit.
     this.circuitContext = this.contract.impureCircuits.removeBlacklistUser(
       this.circuitContext,
       { bytes: account }
@@ -117,6 +142,23 @@ export class ZKLoanCreditScorerSimulator {
     return ledger(this.circuitContext.currentQueryContext.state);
   }
 
+  public registerProvider(providerId: bigint, providerPk: NativePoint): Ledger {
+    this.circuitContext = this.contract.impureCircuits.registerProvider(
+      this.circuitContext,
+      providerId,
+      providerPk
+    ).context;
+    return ledger(this.circuitContext.currentQueryContext.state);
+  }
+
+  public removeProvider(providerId: bigint): Ledger {
+    this.circuitContext = this.contract.impureCircuits.removeProvider(
+      this.circuitContext,
+      providerId
+    ).context;
+    return ledger(this.circuitContext.currentQueryContext.state);
+  }
+
   public publicKey(sk: Uint8Array, pin: bigint): Uint8Array {
     return this.contract.circuits.publicKey(
       this.circuitContext,
@@ -124,7 +166,6 @@ export class ZKLoanCreditScorerSimulator {
       pin
     ).result;
   }
-
 
   public createTestUser(str: string): any {
     return createEitherTestUser(str);

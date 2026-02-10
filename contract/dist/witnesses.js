@@ -12,14 +12,24 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+const TWO_248 = 452312848583266388373324160190187140051835877600158453279131187530910662656n;
 export const witnesses = {
-    getRequesterScoringWitness: ({ privateState }) => [
+    getAttestedScoringWitness: ({ privateState }) => [
         privateState,
-        {
-            creditScore: privateState.creditScore,
-            monthlyIncome: privateState.monthlyIncome,
-            monthsAsCustomer: privateState.monthsAsCustomer,
-        },
+        [
+            {
+                creditScore: privateState.creditScore,
+                monthlyIncome: privateState.monthlyIncome,
+                monthsAsCustomer: privateState.monthsAsCustomer,
+            },
+            privateState.attestationSignature,
+            privateState.attestationProviderId,
+        ],
     ],
+    getSchnorrReduction: ({ privateState }, challengeHash) => {
+        const q = challengeHash / TWO_248;
+        const r = challengeHash % TWO_248;
+        return [privateState, [q, r]];
+    },
 };
 //# sourceMappingURL=witnesses.js.map

@@ -159,8 +159,50 @@ zkloan-credit-scorer/
 │   └── public/
 │       ├── keys/                # Prover keys (copied during build)
 │       └── zkir/                # ZK IR files (copied during build)
+├── zkloan-credit-scorer-attestation-api/  # Attestation signing service
+│   ├── src/
+│   │   ├── index.ts               # Entry point
+│   │   ├── server.ts              # Restify routes
+│   │   ├── signing.ts             # Schnorr signing logic
+│   │   └── types.ts               # Request/response types
+│   └── test/
 └── README.md
 ```
+
+### Attestation Service
+
+The attestation API is a trusted third-party service that signs credit data using Schnorr signatures on the Jubjub curve. The smart contract verifies these signatures inside the ZK circuit before processing loan applications, ensuring credit data cannot be fabricated by a malicious DApp.
+
+#### Setup Flow
+
+1. **Start the attestation API:**
+   ```bash
+   cd zkloan-credit-scorer-attestation-api
+   npm run dev
+   ```
+
+2. **Register the provider on-chain** (admin only):
+   ```
+   # Use the public key printed at API startup
+   registerProvider(providerId, providerPublicKey)
+   ```
+
+3. **Request attestation** (from your DApp):
+   ```bash
+   curl -X POST http://localhost:3000/attest \
+     -H "Content-Type: application/json" \
+     -d '{"creditScore":720,"monthlyIncome":2500,"monthsAsCustomer":24,"userPubKeyHash":"..."}'
+   ```
+
+4. **Apply for loan** using the attestation signature in private state
+
+#### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PORT` | API server port | `3000` |
+| `PROVIDER_ID` | Provider identifier (registered on-chain) | `1` |
+| `PROVIDER_SECRET_KEY` | Provider signing key (hex) | Auto-generated |
 
 ---
 
