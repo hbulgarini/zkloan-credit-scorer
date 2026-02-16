@@ -2,7 +2,7 @@ import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { createServer } from './server.js';
 import { generateKeyPair, getPublicKey } from './signing.js';
 
-setNetworkId('undeployed');
+setNetworkId(process.env.NETWORK_ID || 'undeployed');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const PROVIDER_ID = parseInt(process.env.PROVIDER_ID || '1', 10);

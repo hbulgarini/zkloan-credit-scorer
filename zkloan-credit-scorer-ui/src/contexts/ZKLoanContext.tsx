@@ -1,6 +1,6 @@
 import React, { type PropsWithChildren, createContext, useState, useCallback, useMemo, useEffect } from 'react';
 import { Buffer } from 'buffer';
-import { type ContractAddress } from '@midnight-ntwrk/compact-runtime';
+import { type ContractAddress, transientHash, CompactTypeBytes } from '@midnight-ntwrk/compact-runtime';
 import * as ledger from '@midnight-ntwrk/ledger-v7';
 import {
   BehaviorSubject,
@@ -39,7 +39,7 @@ import { ZKLoanCreditScorer, witnesses, type ZKLoanCreditScorerPrivateState } fr
 type ZKLoanCreditScorerContract = ZKLoanCreditScorer.Contract<ZKLoanCreditScorerPrivateState>;
 import { saveLoanProfile } from '../utils/loanProfiles';
 
-export type ZKLoanCircuitKeys = 'requestLoan' | 'changePin' | 'blacklistUser' | 'removeBlacklistUser' | 'transferAdmin' | 'respondToLoan';
+export type ZKLoanCircuitKeys = 'requestLoan' | 'changePin' | 'blacklistUser' | 'removeBlacklistUser' | 'transferAdmin' | 'respondToLoan' | 'registerProvider' | 'removeProvider';
 
 // Re-export loan types for components
 export type LoanStatus = 'Approved' | 'Rejected' | 'Proposed' | 'NotAccepted';
@@ -105,6 +105,8 @@ export type ZKLoanProviderProps = PropsWithChildren<{
 }>;
 
 const NETWORK_ID = import.meta.env.VITE_NETWORK_ID || 'preprod';
+const ATTESTATION_API_URL = import.meta.env.VITE_ATTESTATION_API_URL || 'http://localhost:3000';
+const bytes32Type = new CompactTypeBytes(32);
 
 // Helper functions for hex conversion
 function uint8ArrayToHex(bytes: Uint8Array): string {
@@ -160,6 +162,8 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
     creditScore: 720n,
     monthlyIncome: 2500n,
     monthsAsCustomer: 24n,
+    attestationSignature: { announcement: { x: 0n, y: 0n }, response: 0n },
+    attestationProviderId: 0n,
   });
   const [currentProfileId, setCurrentProfileId] = useState<string>('user-001');
   const [secretPin, setSecretPin] = useState<string>('1234');
@@ -475,6 +479,9 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
     if (!contract) {
       throw new Error('Contract not deployed. Please deploy or join a contract first.');
     }
+    if (!walletPublicKeyBytes) {
+      throw new Error('Wallet public key not available. Please reconnect your wallet.');
+    }
 
     const pinNum = parseInt(secretPin, 10);
     if (isNaN(pinNum)) {
@@ -482,6 +489,53 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
     }
     const pin = BigInt(pinNum);
 
+    // 1. Compute user pub key hash for attestation
+    setFlowMessage('Computing identity for attestation...');
+    const pubKey = ZKLoanCreditScorer.pureCircuits.publicKey(walletPublicKeyBytes, pin);
+    const userPubKeyHash = transientHash(bytes32Type, pubKey);
+    logger.info('Computed userPubKeyHash for attestation');
+
+    // 2. Fetch attestation signature from API
+    setFlowMessage('Fetching attestation signature...');
+    const attestRes = await fetch(`${ATTESTATION_API_URL}/attest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        creditScore: Number(privateState.creditScore),
+        monthlyIncome: Number(privateState.monthlyIncome),
+        monthsAsCustomer: Number(privateState.monthsAsCustomer),
+        userPubKeyHash: userPubKeyHash.toString(),
+      }),
+    });
+    if (!attestRes.ok) {
+      throw new Error(`Attestation API error: ${attestRes.status} ${await attestRes.text()}`);
+    }
+    const attestData = await attestRes.json() as {
+      signature: { announcement: { x: string; y: string }; response: string };
+    };
+    const attestationSignature = {
+      announcement: {
+        x: BigInt(attestData.signature.announcement.x),
+        y: BigInt(attestData.signature.announcement.y),
+      },
+      response: BigInt(attestData.signature.response),
+    };
+
+    // 3. Get provider info
+    const providerRes = await fetch(`${ATTESTATION_API_URL}/provider-info`);
+    const providerInfo = await providerRes.json() as { providerId: number };
+
+    // 4. Update private state with attestation data (both React state and provider)
+    const updatedState: ZKLoanCreditScorerPrivateState = {
+      ...privateState,
+      attestationSignature,
+      attestationProviderId: BigInt(providerInfo.providerId),
+    };
+    await privateStateProvider.set('zkLoanCreditScorerPrivateState', updatedState);
+    setPrivateState(updatedState); // Keep React state in sync so useEffect doesn't overwrite provider
+    logger.info({ providerId: providerInfo.providerId }, 'Private state updated with attestation');
+
+    // 5. Call the circuit
     setFlowMessage('Requesting loan...');
     logger.info(`Requesting loan for amount: ${amount} with PIN...`);
 
@@ -519,7 +573,7 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
 
     // Signal that loans have been updated so UI can refresh
     setLastLoanUpdate(Date.now());
-  }, [contract, logger, publicDataProviderRef, contractAddressRef, walletPublicKeyBytes, currentProfileId, secretPin]);
+  }, [contract, logger, publicDataProviderRef, contractAddressRef, walletPublicKeyBytes, currentProfileId, secretPin, privateState, privateStateProvider]);
 
   const respondToLoanTx = useCallback(async (loanId: bigint, accept: boolean) => {
     if (!contract) {

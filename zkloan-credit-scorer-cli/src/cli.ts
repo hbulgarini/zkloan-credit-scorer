@@ -48,7 +48,9 @@ You can do one of the following:
   5. [Admin] Blacklist a user
   6. [Admin] Remove user from blacklist
   7. [Admin] Transfer admin role
-  8. Exit
+  8. [Admin] Register attestation provider
+  9. [Admin] Remove attestation provider
+  10. Exit
 Which would you like to do? `;
 
 const join = async (providers: ZKLoanCreditScorerProviders, rli: Interface): Promise<DeployedZKLoanCreditScorerContract> => {
@@ -73,14 +75,23 @@ const deployOrJoin = async (providers: ZKLoanCreditScorerProviders, rli: Interfa
   }
 };
 
-const requestLoan = async (contract: DeployedZKLoanCreditScorerContract, rli: Interface): Promise<void> => {
+const requestLoan = async (
+  contract: DeployedZKLoanCreditScorerContract,
+  providers: ZKLoanCreditScorerProviders,
+  walletContext: WalletContext,
+  rli: Interface,
+): Promise<void> => {
   const amountStr = await rli.question('Enter the loan amount requested: ');
   const pinStr = await rli.question('Enter your secret PIN: ');
 
   const amount = BigInt(amountStr);
   const pin = BigInt(pinStr);
 
-  await api.requestLoan(contract, amount, pin);
+  const attestationApiUrl = process.env.ATTESTATION_API_URL || 'http://localhost:3000';
+  const coinPubKeyHex = walletContext.shieldedSecretKeys.coinPublicKey as unknown as string;
+  const zwapKeyBytes = Buffer.from(coinPubKeyHex, 'hex');
+
+  await api.requestLoan(contract, providers, amount, pin, zwapKeyBytes, attestationApiUrl);
   logger.info('Loan request submitted successfully!');
 };
 
@@ -120,6 +131,26 @@ const transferAdminFlow = async (contract: DeployedZKLoanCreditScorerContract, r
   logger.info('Admin role transferred successfully!');
 };
 
+const registerProviderFlow = async (contract: DeployedZKLoanCreditScorerContract, rli: Interface): Promise<void> => {
+  const providerIdStr = await rli.question('Enter the provider ID (number): ');
+  const pkXStr = await rli.question('Enter the provider public key X coordinate (bigint): ');
+  const pkYStr = await rli.question('Enter the provider public key Y coordinate (bigint): ');
+
+  const providerId = BigInt(providerIdStr);
+  const providerPk = { x: BigInt(pkXStr), y: BigInt(pkYStr) };
+
+  await api.registerProvider(contract, providerId, providerPk);
+  logger.info('Attestation provider registered successfully!');
+};
+
+const removeProviderFlow = async (contract: DeployedZKLoanCreditScorerContract, rli: Interface): Promise<void> => {
+  const providerIdStr = await rli.question('Enter the provider ID to remove (number): ');
+  const providerId = BigInt(providerIdStr);
+
+  await api.removeProvider(contract, providerId);
+  logger.info('Attestation provider removed successfully!');
+};
+
 const mainLoop = async (providers: ZKLoanCreditScorerProviders, walletContext: WalletContext, rli: Interface): Promise<void> => {
   const contract = await deployOrJoin(providers, rli);
   if (contract === null) {
@@ -130,7 +161,7 @@ const mainLoop = async (providers: ZKLoanCreditScorerProviders, walletContext: W
     try {
       switch (choice) {
         case '1':
-          await requestLoan(contract, rli);
+          await requestLoan(contract, providers, walletContext, rli);
           break;
         case '2':
           await changePinFlow(contract, rli);
@@ -151,6 +182,12 @@ const mainLoop = async (providers: ZKLoanCreditScorerProviders, walletContext: W
           await transferAdminFlow(contract, rli);
           break;
         case '8':
+          await registerProviderFlow(contract, rli);
+          break;
+        case '9':
+          await removeProviderFlow(contract, rli);
+          break;
+        case '10':
           logger.info('Exiting...');
           return;
         default:

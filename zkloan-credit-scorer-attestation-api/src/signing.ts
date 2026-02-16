@@ -1,7 +1,11 @@
 import { ecMulGenerator, type NativePoint } from '@midnight-ntwrk/compact-runtime';
 import { ZKLoanCreditScorer } from 'zkloan-credit-scorer-contract';
 const { pureCircuits } = ZKLoanCreditScorer;
-type SchnorrSignature = ZKLoanCreditScorer.SchnorrSignature;
+
+type SchnorrSignature = {
+  announcement: NativePoint;
+  response: bigint;
+};
 import * as crypto from 'crypto';
 
 const JUBJUB_ORDER = 6554484396890773809930967563523245729705921265872317281365359162392183254199n;
