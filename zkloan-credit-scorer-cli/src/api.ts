@@ -14,7 +14,7 @@
 // limitations under the License.
 
 import 'dotenv/config';
-import { type ContractAddress } from '@midnight-ntwrk/compact-runtime';
+import { type ContractAddress, transientHash, CompactTypeBytes } from '@midnight-ntwrk/compact-runtime';
 import { ZKLoanCreditScorer, type ZKLoanCreditScorerPrivateState, witnesses } from 'zkloan-credit-scorer-contract';
 import * as ledger from '@midnight-ntwrk/ledger-v7';
 import { CompiledContract } from '@midnight-ntwrk/compact-js';
@@ -129,11 +129,83 @@ export const deploy = async (
 
 // ZKLoan-specific operations
 
+const bytes32Type = new CompactTypeBytes(32);
+const { pureCircuits } = ZKLoanCreditScorer;
+
+export const computeUserPubKeyHash = (zwapKeyBytes: Uint8Array, pin: bigint): bigint => {
+  const pubKey = pureCircuits.publicKey(zwapKeyBytes, pin);
+  return transientHash(bytes32Type, pubKey);
+};
+
+export const fetchAttestation = async (
+  attestationApiUrl: string,
+  creditScore: number,
+  monthlyIncome: number,
+  monthsAsCustomer: number,
+  userPubKeyHash: bigint,
+): Promise<{ announcement: { x: bigint; y: bigint }; response: bigint }> => {
+  const res = await fetch(`${attestationApiUrl}/attest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      creditScore,
+      monthlyIncome,
+      monthsAsCustomer,
+      userPubKeyHash: userPubKeyHash.toString(),
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Attestation API error: ${res.status} ${await res.text()}`);
+  }
+  const data = await res.json() as { signature: { announcement: { x: string; y: string }; response: string } };
+  return {
+    announcement: { x: BigInt(data.signature.announcement.x), y: BigInt(data.signature.announcement.y) },
+    response: BigInt(data.signature.response),
+  };
+};
+
 export const requestLoan = async (
   contract: DeployedZKLoanCreditScorerContract,
+  providers: ZKLoanCreditScorerProviders,
   amountRequested: bigint,
   secretPin: bigint,
+  zwapKeyBytes: Uint8Array,
+  attestationApiUrl: string,
 ): Promise<FinalizedTxData> => {
+  // 1. Compute user pub key hash (same as the circuit does)
+  const userPubKeyHash = computeUserPubKeyHash(zwapKeyBytes, secretPin);
+  logger.info(`Computed userPubKeyHash for attestation`);
+
+  // 2. Get current private state
+  const currentState = await providers.privateStateProvider.get('zkLoanCreditScorerPrivateState');
+  if (!currentState) {
+    throw new Error('No private state found');
+  }
+
+  // 3. Fetch attestation signature from API
+  logger.info(`Fetching attestation from ${attestationApiUrl}...`);
+  const signature = await fetchAttestation(
+    attestationApiUrl,
+    Number(currentState.creditScore),
+    Number(currentState.monthlyIncome),
+    Number(currentState.monthsAsCustomer),
+    userPubKeyHash,
+  );
+
+  // 4. Get provider info
+  const providerRes = await fetch(`${attestationApiUrl}/provider-info`);
+  const providerInfo = await providerRes.json() as { providerId: number };
+
+  // 5. Update private state with attestation data
+  const updatedState: ZKLoanCreditScorerPrivateState = {
+    ...currentState,
+    attestationSignature: signature,
+    attestationProviderId: BigInt(providerInfo.providerId),
+  };
+  await providers.privateStateProvider.set('zkLoanCreditScorerPrivateState', updatedState);
+  logger.info(`Private state updated with attestation (provider ${providerInfo.providerId})`);
+
+  // 6. Call the circuit
   logger.info(`Requesting loan for amount: ${amountRequested} with PIN...`);
   const finalizedTxData = await contract.callTx.requestLoan(amountRequested, secretPin);
   logger.info(`Transaction ${finalizedTxData.public.txId} added in block ${finalizedTxData.public.blockHeight}`);
@@ -177,6 +249,27 @@ export const transferAdmin = async (
 ): Promise<FinalizedTxData> => {
   logger.info('Transferring admin role...');
   const finalizedTxData = await contract.callTx.transferAdmin({ bytes: newAdmin });
+  logger.info(`Transaction ${finalizedTxData.public.txId} added in block ${finalizedTxData.public.blockHeight}`);
+  return finalizedTxData.public;
+};
+
+export const registerProvider = async (
+  contract: DeployedZKLoanCreditScorerContract,
+  providerId: bigint,
+  providerPk: { x: bigint; y: bigint },
+): Promise<FinalizedTxData> => {
+  logger.info(`Registering attestation provider ${providerId}...`);
+  const finalizedTxData = await contract.callTx.registerProvider(providerId, providerPk);
+  logger.info(`Transaction ${finalizedTxData.public.txId} added in block ${finalizedTxData.public.blockHeight}`);
+  return finalizedTxData.public;
+};
+
+export const removeProvider = async (
+  contract: DeployedZKLoanCreditScorerContract,
+  providerId: bigint,
+): Promise<FinalizedTxData> => {
+  logger.info(`Removing attestation provider ${providerId}...`);
+  const finalizedTxData = await contract.callTx.removeProvider(providerId);
   logger.info(`Transaction ${finalizedTxData.public.txId} added in block ${finalizedTxData.public.blockHeight}`);
   return finalizedTxData.public;
 };

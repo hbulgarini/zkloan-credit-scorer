@@ -7,6 +7,18 @@ export function createServer(providerSk: bigint, providerId: number): restify.Se
   const server = restify.createServer({ name: 'zkloan-attestation-api' });
   server.use(restify.plugins.bodyParser());
 
+  // CORS support for browser-based UI
+  server.pre((req: restify.Request, res: restify.Response, next: restify.Next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') {
+      res.send(204);
+      return;
+    }
+    return next();
+  });
+
   const providerPk: NativePoint = getPublicKey(providerSk);
 
   server.post('/attest', (req: restify.Request, res: restify.Response, next: restify.Next) => {

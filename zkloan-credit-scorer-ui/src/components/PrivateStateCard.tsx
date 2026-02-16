@@ -60,6 +60,8 @@ export const PrivateStateCard: React.FC = () => {
       creditScore: BigInt(profile.creditScore),
       monthlyIncome: BigInt(profile.monthlyIncome),
       monthsAsCustomer: BigInt(profile.monthsAsCustomer),
+      attestationSignature: { announcement: { x: 0n, y: 0n }, response: 0n },
+      attestationProviderId: 0n,
     });
     // Update the current profile ID in context for loan tracking
     setCurrentProfileId(profile.applicantId);

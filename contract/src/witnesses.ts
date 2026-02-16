@@ -13,9 +13,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Ledger, SchnorrSignature } from "./managed/zkloan-credit-scorer/contract/index.js";
+import { Ledger } from "./managed/zkloan-credit-scorer/contract/index.js";
 import { WitnessContext } from "@midnight-ntwrk/compact-runtime";
 
+export type SchnorrSignature = {
+  announcement: { x: bigint; y: bigint };
+  response: bigint;
+};
 
 export type ZKLoanCreditScorerPrivateState = {
   creditScore: bigint;

@@ -82,5 +82,7 @@ export function getUserProfile(index?: number): ZKLoanCreditScorerPrivateState {
     creditScore: BigInt(profile.creditScore),
     monthlyIncome: BigInt(profile.monthlyIncome),
     monthsAsCustomer: BigInt(profile.monthsAsCustomer),
+    attestationSignature: { announcement: { x: 0n, y: 0n }, response: 0n },
+    attestationProviderId: 0n,
   };
 }
