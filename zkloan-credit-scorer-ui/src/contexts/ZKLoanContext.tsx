@@ -1,4 +1,4 @@
-import React, { type PropsWithChildren, createContext, useState, useCallback, useMemo, useEffect } from 'react';
+import React, { type PropsWithChildren, createContext, useState, useCallback, useMemo } from 'react';
 import { Buffer } from 'buffer';
 import { type ContractAddress, transientHash, CompactTypeBytes } from '@midnight-ntwrk/compact-runtime';
 import * as ledger from '@midnight-ntwrk/ledger-v7';
@@ -31,7 +31,8 @@ import { FetchZkConfigProvider } from '@midnight-ntwrk/midnight-js-fetch-zk-conf
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
 import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
-import { deployContract, findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
+import { deployContract, findDeployedContract, submitCallTx } from '@midnight-ntwrk/midnight-js-contracts';
+import { type PrivateStateProvider } from '@midnight-ntwrk/midnight-js-types';
 import { CompiledContract } from '@midnight-ntwrk/compact-js';
 import { ZKLoanCreditScorer, witnesses, type ZKLoanCreditScorerPrivateState } from 'zkloan-credit-scorer-contract';
 
@@ -122,39 +123,51 @@ function hexToUint8Array(hex: string): Uint8Array {
   return new Uint8Array(matches.map((byte) => parseInt(byte, 16)));
 }
 
-// In-memory private state provider (simpler than level for browser)
-function inMemoryPrivateStateProvider<K extends string, V>() {
-  const states = new Map<K, V>();
-  const signingKeys: Record<string, unknown> = {};
+// In-memory private state provider that implements the full PrivateStateProvider interface
+// including setContractAddress (required by findDeployedContract/submitCallTx in v3.1.0)
+function inMemoryPrivateStateProvider<PSI extends string, PS>(): PrivateStateProvider<PSI, PS> {
+  const states = new Map<string, PS>();
+  const signingKeys = new Map<string, unknown>();
+  let contractAddress: string | null = null;
+
+  const scopedKey = (key: PSI): string => contractAddress ? `${contractAddress}:${key}` : key;
 
   return {
-    async get(key: K): Promise<V | null> {
-      return states.get(key) ?? null;
+    setContractAddress(address: ContractAddress): void {
+      contractAddress = address;
     },
-    async set(key: K, value: V): Promise<void> {
-      states.set(key, value);
+    async get(key: PSI): Promise<PS | null> {
+      return states.get(scopedKey(key)) ?? null;
     },
-    async remove(key: K): Promise<void> {
-      states.delete(key);
+    async set(key: PSI, value: PS): Promise<void> {
+      states.set(scopedKey(key), value);
+    },
+    async remove(key: PSI): Promise<void> {
+      states.delete(scopedKey(key));
     },
     async clear(): Promise<void> {
       states.clear();
     },
-    async setSigningKey(contractAddress: string, signingKey: unknown): Promise<void> {
-      signingKeys[contractAddress] = signingKey;
+    async setSigningKey(address: ContractAddress, signingKey: unknown): Promise<void> {
+      signingKeys.set(address, signingKey);
     },
-    async getSigningKey(contractAddress: string): Promise<unknown | null> {
-      return signingKeys[contractAddress] ?? null;
+    async getSigningKey(address: ContractAddress): Promise<unknown | null> {
+      return signingKeys.get(address) ?? null;
     },
-    async removeSigningKey(contractAddress: string): Promise<void> {
-      delete signingKeys[contractAddress];
+    async removeSigningKey(address: ContractAddress): Promise<void> {
+      signingKeys.delete(address);
     },
     async clearSigningKeys(): Promise<void> {
-      Object.keys(signingKeys).forEach((key) => {
-        delete signingKeys[key];
-      });
+      signingKeys.clear();
     },
-  };
+    async exportPrivateStates() {
+      throw new Error('Export not supported in in-memory provider');
+    },
+    async importPrivateStates() {
+      throw new Error('Import not supported in in-memory provider');
+    },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
 }
 
 export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger, children }) => {
@@ -169,8 +182,6 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
   const [secretPin, setSecretPin] = useState<string>('1234');
   const [lastLoanUpdate, setLastLoanUpdate] = useState<number>(0);
   const [deploymentSubject] = useState(() => new BehaviorSubject<ZKLoanDeployment>({ status: 'idle' }));
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [contract, setContract] = useState<any>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
@@ -179,6 +190,15 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [publicDataProviderRef, setPublicDataProviderRef] = useState<any>(null);
   const [contractAddressRef, setContractAddressRef] = useState<ContractAddress | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [providersRef, setProvidersRef] = useState<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [compiledContractRef, setCompiledContractRef] = useState<any>(null);
+
+  const privateStateProvider = useMemo(
+    () => inMemoryPrivateStateProvider<string, ZKLoanCreditScorerPrivateState>(),
+    []
+  );
 
   const connectToWallet = useCallback(async (): Promise<{ wallet: ConnectedAPI; config: Configuration }> => {
     const result = await firstValueFrom(
@@ -235,17 +255,6 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
     );
     return result as { wallet: ConnectedAPI; config: Configuration };
   }, [logger]);
-
-  const privateStateProvider = useMemo(
-    () => inMemoryPrivateStateProvider<string, ZKLoanCreditScorerPrivateState>(),
-    []
-  );
-
-  // Sync React privateState with the provider whenever it changes
-  useEffect(() => {
-    privateStateProvider.set('zkLoanCreditScorerPrivateState', privateState);
-    logger.info({ privateState }, 'Private state synced to provider');
-  }, [privateState, privateStateProvider, logger]);
 
   const initializeProviders = useCallback(async () => {
     const { wallet, config } = await connectToWallet();
@@ -319,8 +328,11 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
           const serializedStr = uint8ArrayToHex(serialized);
 
           // Call wallet to balance the unsealed transaction
-          // This takes Transaction<SignatureEnabled, Proof, PreBinding> and returns a balanced/finalized tx
-          const result = await wallet.balanceUnsealedTransaction(serializedStr);
+          // The Lace wallet's internal implementation expects (tx, options, {sender}) where
+          // {sender} is appended by the extension's messaging layer. We must pass an options
+          // object as the second arg so {sender} lands in the correct (third) position.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const result = await (wallet as any).balanceUnsealedTransaction(serializedStr, {});
 
           // Deserialize the balanced and finalized transaction
           const resultBytes = hexToUint8Array(result.tx);
@@ -378,8 +390,9 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
 
       const providers = await initializeProviders();
 
-      // Store the public data provider for later ledger queries
+      // Store providers for later submitCallTx usage
       setPublicDataProviderRef(providers.publicDataProvider);
+      setProvidersRef(providers);
 
       setFlowMessage('Deploying ZKLoan Credit Scorer contract...');
       logger.info('Deploying ZKLoan Credit Scorer contract...');
@@ -394,6 +407,9 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
         CompiledContract.withCompiledFileAssets(zkConfigPath),
       );
 
+      // Store compiled contract for later submitCallTx usage
+      setCompiledContractRef(zkLoanCompiledContract);
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const deployed = await deployContract(providers as any, {
         compiledContract: zkLoanCompiledContract,
@@ -401,7 +417,6 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
         initialPrivateState: privateState,
       });
 
-      setContract(deployed);
       const deployedAddress = deployed.deployTxData.public.contractAddress;
       setContractAddressRef(deployedAddress);
       setFlowMessage(undefined);
@@ -430,8 +445,9 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
       const providers = await initializeProviders();
       logger.info('Providers initialized successfully');
 
-      // Store the public data provider for later ledger queries
+      // Store providers for later submitCallTx usage
       setPublicDataProviderRef(providers.publicDataProvider);
+      setProvidersRef(providers);
 
       setFlowMessage('Joining contract...');
       logger.info({ contractAddress }, 'Joining contract...');
@@ -446,6 +462,9 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
         CompiledContract.withCompiledFileAssets(zkConfigPath),
       );
 
+      // Store compiled contract for later submitCallTx usage
+      setCompiledContractRef(zkLoanCompiledContract);
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const joined = await findDeployedContract(providers as any, {
         contractAddress,
@@ -455,7 +474,6 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
       });
 
       logger.info({ joined: !!joined }, 'findDeployedContract returned');
-      setContract(joined);
       setFlowMessage(undefined);
 
       const resolvedAddress = joined?.deployTxData?.public?.contractAddress ?? contractAddress;
@@ -476,7 +494,7 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
   }, [initializeProviders, logger, privateState, deploymentSubject]);
 
   const requestLoanTx = useCallback(async (amount: bigint) => {
-    if (!contract) {
+    if (!providersRef || !compiledContractRef || !contractAddressRef) {
       throw new Error('Contract not deployed. Please deploy or join a contract first.');
     }
     if (!walletPublicKeyBytes) {
@@ -525,21 +543,27 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
     const providerRes = await fetch(`${ATTESTATION_API_URL}/provider-info`);
     const providerInfo = await providerRes.json() as { providerId: number };
 
-    // 4. Update private state with attestation data (both React state and provider)
+    // 4. Update private state with attestation data
     const updatedState: ZKLoanCreditScorerPrivateState = {
       ...privateState,
       attestationSignature,
       attestationProviderId: BigInt(providerInfo.providerId),
     };
-    await privateStateProvider.set('zkLoanCreditScorerPrivateState', updatedState);
-    setPrivateState(updatedState); // Keep React state in sync so useEffect doesn't overwrite provider
+    await providersRef.privateStateProvider.set('zkLoanCreditScorerPrivateState', updatedState);
+    setPrivateState(updatedState);
     logger.info({ providerId: providerInfo.providerId }, 'Private state updated with attestation');
 
-    // 5. Call the circuit
+    // 5. Call the circuit via submitCallTx
     setFlowMessage('Requesting loan...');
     logger.info(`Requesting loan for amount: ${amount} with PIN...`);
 
-    const finalizedTxData = await contract.callTx.requestLoan(amount, pin);
+    const finalizedTxData = await submitCallTx(providersRef, {
+      compiledContract: compiledContractRef,
+      contractAddress: contractAddressRef,
+      circuitId: 'requestLoan' as ZKLoanCircuitKeys,
+      args: [amount, pin] as [bigint, bigint],
+      privateStateId: 'zkLoanCreditScorerPrivateState',
+    });
 
     setFlowMessage(undefined);
     logger.info(`Transaction ${finalizedTxData.public.txId} added in block ${finalizedTxData.public.blockHeight}`);
@@ -573,10 +597,10 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
 
     // Signal that loans have been updated so UI can refresh
     setLastLoanUpdate(Date.now());
-  }, [contract, logger, publicDataProviderRef, contractAddressRef, walletPublicKeyBytes, currentProfileId, secretPin, privateState, privateStateProvider]);
+  }, [providersRef, compiledContractRef, contractAddressRef, logger, publicDataProviderRef, walletPublicKeyBytes, currentProfileId, secretPin, privateState]);
 
   const respondToLoanTx = useCallback(async (loanId: bigint, accept: boolean) => {
-    if (!contract) {
+    if (!providersRef || !compiledContractRef || !contractAddressRef) {
       throw new Error('Contract not deployed. Please deploy or join a contract first.');
     }
 
@@ -589,14 +613,20 @@ export const ZKLoanProvider: React.FC<Readonly<ZKLoanProviderProps>> = ({ logger
     setFlowMessage(accept ? 'Accepting loan proposal...' : 'Declining loan proposal...');
     logger.info(`Responding to loan ${loanId}: ${accept ? 'accept' : 'decline'}`);
 
-    const finalizedTxData = await contract.callTx.respondToLoan(loanId, pin, accept);
+    const finalizedTxData = await submitCallTx(providersRef, {
+      compiledContract: compiledContractRef,
+      contractAddress: contractAddressRef,
+      circuitId: 'respondToLoan' as ZKLoanCircuitKeys,
+      args: [loanId, pin, accept] as [bigint, bigint, boolean],
+      privateStateId: 'zkLoanCreditScorerPrivateState',
+    });
 
     setFlowMessage(undefined);
     logger.info(`Transaction ${finalizedTxData.public.txId} added in block ${finalizedTxData.public.blockHeight}`);
 
     // Signal that loans have been updated so UI can refresh
     setLastLoanUpdate(Date.now());
-  }, [contract, logger, secretPin]);
+  }, [providersRef, compiledContractRef, contractAddressRef, logger, secretPin]);
 
   const getMyLoans = useCallback(async (): Promise<UserLoan[]> => {
     if (!publicDataProviderRef || !contractAddressRef || !walletPublicKeyBytes) {
