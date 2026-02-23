@@ -14,7 +14,7 @@ export function createServer(providerSk: bigint, providerId: number): restify.Se
     res.header('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') {
       res.send(204);
-      return;
+      return next(false);
     }
     return next();
   });

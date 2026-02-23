@@ -105,7 +105,7 @@ export type ZKLoanProviderProps = PropsWithChildren<{
 }>;
 
 const NETWORK_ID = import.meta.env.VITE_NETWORK_ID || 'preprod';
-const ATTESTATION_API_URL = import.meta.env.VITE_ATTESTATION_API_URL || 'http://localhost:3000';
+const ATTESTATION_API_URL = import.meta.env.VITE_ATTESTATION_API_URL || 'http://localhost:4000';
 const bytes32Type = new CompactTypeBytes(32);
 
 // Helper functions for hex conversion

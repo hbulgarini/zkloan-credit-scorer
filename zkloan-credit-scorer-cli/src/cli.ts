@@ -87,7 +87,7 @@ const requestLoan = async (
   const amount = BigInt(amountStr);
   const pin = BigInt(pinStr);
 
-  const attestationApiUrl = process.env.ATTESTATION_API_URL || 'http://localhost:3000';
+  const attestationApiUrl = process.env.ATTESTATION_API_URL || 'http://localhost:4000';
   const coinPubKeyHex = walletContext.shieldedSecretKeys.coinPublicKey as unknown as string;
   const zwapKeyBytes = Buffer.from(coinPubKeyHex, 'hex');
 

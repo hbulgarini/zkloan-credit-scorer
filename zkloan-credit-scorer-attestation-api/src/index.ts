@@ -4,7 +4,7 @@ import { generateKeyPair, getPublicKey } from './signing.js';
 
 setNetworkId(process.env.NETWORK_ID || 'undeployed');
 
-const PORT = parseInt(process.env.PORT || '3000', 10);
+const PORT = parseInt(process.env.PORT || '4000', 10);
 const PROVIDER_ID = parseInt(process.env.PROVIDER_ID || '1', 10);
 
 let providerSk: bigint;
