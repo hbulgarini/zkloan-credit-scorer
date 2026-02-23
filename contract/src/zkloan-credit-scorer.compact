@@ -13,10 +13,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pragma language_version 0.20;
+pragma language_version 0.21;
 import CompactStandardLibrary;
 import "schnorr" prefix Schnorr_;
 
+export { Schnorr_SchnorrSignature };
 export enum LoanStatus {
     Approved,
     Rejected,
