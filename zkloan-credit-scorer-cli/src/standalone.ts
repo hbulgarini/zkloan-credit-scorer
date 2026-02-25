@@ -14,14 +14,14 @@
 // limitations under the License.
 
 import { createLogger } from './logger-utils.js';
-import path from 'node:path';
 import { run } from './cli.js';
-import { DockerComposeEnvironment, Wait } from 'testcontainers';
-import { currentDir, StandaloneConfig } from './config.js';
+import { StandaloneConfig } from './config.js';
 
+// Connects to an already-running local Midnight network (managed by midnight-local-network).
+// No docker containers are started here — the network must be running at the default ports:
+//   Node:         http://127.0.0.1:9944
+//   Indexer:      http://127.0.0.1:8088
+//   Proof Server: http://127.0.0.1:6300
 const config = new StandaloneConfig();
-const dockerEnv = new DockerComposeEnvironment(path.resolve(currentDir, '..'), 'standalone.yml')
-  .withWaitStrategy('zkloan-proof-server', Wait.forLogMessage('Actix runtime found; starting in Actix runtime', 1))
-  .withWaitStrategy('zkloan-indexer', Wait.forLogMessage(/starting indexing/, 1));
 const logger = await createLogger(config.logDir);
-await run(config, logger, dockerEnv);
+await run(config, logger);
