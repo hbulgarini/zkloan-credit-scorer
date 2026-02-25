@@ -60,6 +60,10 @@ jspm_packages/
 # Compact
 managed/
 
+# UI compiled contract artifacts (copied by copy-contract-keys script)
+zkloan-credit-scorer-ui/public/keys/
+zkloan-credit-scorer-ui/public/zkir/
+
 ./midnight-docs
 
 # Local development folders
